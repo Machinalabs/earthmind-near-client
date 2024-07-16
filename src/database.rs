@@ -1,4 +1,6 @@
+use crate::constants::LAST_PROCESSED_BLOCK_KEY;
 use rocksdb::{Options, DB};
+use std::sync::{Arc, Mutex};
 
 // @dev Initialize the RocksDB instance
 pub fn init_db(path: &str) -> std::io::Result<DB> {
