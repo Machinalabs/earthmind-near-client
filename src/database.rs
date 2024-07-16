@@ -2,14 +2,14 @@ use crate::constants::LAST_PROCESSED_BLOCK_KEY;
 use rocksdb::{Options, DB};
 use std::sync::{Arc, Mutex};
 
-// @dev Initialize the RocksDB instance
+// Initialize the RocksDB instance
 pub fn init_db(path: &str) -> std::io::Result<DB> {
     let mut opts = Options::default();
     opts.create_if_missing(true);
     DB::open(&opts, path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
 
-// @dev Load the last processed block height from RocksDB
+// Load the last processed block height from RocksDB
 pub fn load_last_processed_block(db: &Arc<Mutex<DB>>) -> std::io::Result<u64> {
     let db = db.lock().unwrap();
     match db.get(LAST_PROCESSED_BLOCK_KEY) {
@@ -22,7 +22,7 @@ pub fn load_last_processed_block(db: &Arc<Mutex<DB>>) -> std::io::Result<u64> {
     }
 }
 
-// @dev Save the last processed block height to RocksDB
+// Save the last processed block height to RocksDB
 pub fn save_last_processed_block(db: &Arc<Mutex<DB>>, block_height: u64) -> std::io::Result<()> {
     let db = db.lock().unwrap();
     db.put(LAST_PROCESSED_BLOCK_KEY, &block_height.to_le_bytes())
