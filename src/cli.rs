@@ -3,17 +3,16 @@ use clap::{Parser, ValueEnum};
 #[derive(Parser)]
 #[command(name = "earthmind_client_near")]
 #[command(about = "A Near block listener with different modes", long_about = None)]
-//#[command(next_line_help = true)]
 pub struct Cli {
     // to choose if is a miner o validator
-    #[arg(long, value_enum)]
+    #[arg(long, value_enum, default_value_t = Modes::Miner)]
     pub mode: Modes,
 
     #[arg(long)]
     pub private_key: String,
 
-    #[arg(long)]
-    pub network : String,
+    #[arg(long, default_value = "testnet")]
+    pub network: Networks,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

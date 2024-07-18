@@ -1,19 +1,14 @@
 use clap::Parser;
-//use near_jsonrpc_client::{methods, JsonRpcClient};
 use std::sync::{Arc, Mutex};
-//use tokio::time::{sleep, Duration};
 
 mod block_streamer;
 mod cli;
 mod constants;
 mod database;
 
-//use block_streamer::{fetch_block, find_transaction_in_block, specify_block_reference};
-//use constants::{ACCOUNT_TO_LISTEN, DB_PATH, FUNCTION_TO_LISTEN, NEAR_RPC_URL};
-//use database::{init_db, load_last_processed_block, save_last_processed_block};
 use block_streamer::run_mode;
-use cli::{Cli, Modes};
-use constants::{DB_PATH, NEAR_RPC_URL};
+use cli::{Cli, Modes, Networks};
+use constants::{DB_PATH, NEAR_RPC_TESTNET, NEAR_RPC_MAINNET};
 use database::init_db;
 use near_jsonrpc_client::JsonRpcClient;
 
@@ -25,7 +20,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = Arc::new(Mutex::new(init_db(DB_PATH)?));
 
     // Connect to the RPC client
-    let client = JsonRpcClient::connect(NEAR_RPC_URL);
+    let client : JsonRpcClient;
+
+    match cli.network {
+        Networks::Mainnet => {
+            client = JsonRpcClient::connect(NEAR_RPC_MAINNET);
+        }
+        Networks::Testnet => {
+            client = JsonRpcClient::connect(NEAR_RPC_TESTNET);
+        }
+    }
 
     match cli.mode {
         Modes::Miner => {
@@ -35,6 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             run_mode(&client, &db, process_validator_transaction).await?;
         }
     }
+
+    //cli.private_key --> obtener near account de esta private key y debe ser obligatorio
 
     Ok(())
 }
