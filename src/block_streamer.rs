@@ -1,14 +1,36 @@
 use near_jsonrpc_client::errors::JsonRpcError;
 use near_jsonrpc_client::methods::block::RpcBlockError;
 use near_jsonrpc_client::methods::chunk::ChunkReference;
+use near_jsonrpc_client::methods::tx::TransactionInfo;
 use near_jsonrpc_client::{methods, JsonRpcClient};
 use near_primitives::hash::CryptoHash;
 use near_primitives::types::{BlockId, BlockReference, Finality};
 use near_primitives::views::{ActionView, BlockView, ChunkView};
+use near_sdk::AccountId;
 
 use crate::constants::*;
 use crate::database::{load_last_processed_block, save_last_processed_block};
 use std::sync::{Arc, Mutex};
+
+//use serde::Deserialize;
+
+// #[derive(Deserialize, Debug)]
+// struct EventData {
+//     request_id: String,
+//     start_time: u64,
+//     reveal_miner_time: u64,
+//     commit_miner_time: u64,
+//     reveal_validator_time: u64,
+//     commit_validator_time: u64,
+// }
+
+// #[derive(Deserialize, Debug)]
+// struct EventJson {
+//     standard: String,
+//     version: String,
+//     event: String,
+//     data: Vec<EventData>,
+// }
 
 pub fn specify_block_reference(last_processed_block: u64) -> BlockReference {
     if last_processed_block == 0 {
@@ -43,7 +65,7 @@ pub async fn fetch_chunk(
 
     match chunk_response {
         Ok(chunk_details) => {
-            // println!("{:#?}", chunk_details);
+            //println!("{:#?}", chunk_details);
             Ok(chunk_details)
         }
         Err(err) => match err.handler_error() {
@@ -98,12 +120,11 @@ pub async fn find_transaction_in_block(
 pub async fn run_mode<F>(
     client: &JsonRpcClient,
     db: &Arc<Mutex<rocksdb::DB>>,
+    account_id: AccountId,
     process_transaction: F,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: Fn(&JsonRpcClient) -> Result<bool, Box<dyn std::error::Error>>
-        + Send
-        + Sync,
+    F: Fn(&JsonRpcClient) -> Result<bool, Box<dyn std::error::Error>> + Send + Sync,
 {
     loop {
         let last_processed_block = load_last_processed_block(db)?;
@@ -120,6 +141,27 @@ where
                 {
                     println!("Found transaction in block: {}", block.header.height);
                     // TODO: Implement your logic here to handle the found transaction
+
+                    //In the block variable, there aren't information about log.
+                    //println!("BLOCK IS: {:?}", block);
+
+                    //The log is in the account who call aour contract, using the CLI we obtain this value and using it with the block heigth
+                    // we can call the transaction info, where we can obtain the log.
+                    let block_hash = block.header.hash;
+
+                    let tx_status_request = methods::tx::RpcTransactionStatusRequest {
+                        transaction_info: TransactionInfo::TransactionId {
+                            tx_hash: block_hash,
+                            sender_account_id: account_id.clone(),
+                        },
+                        wait_until: near_primitives::views::TxExecutionStatus::Final,
+                    };
+
+                    let tx_status = client.call(tx_status_request).await?;
+                    println!("TRANSACTION STATUS: {:?}", tx_status);
+
+                    // And may be implement something like this 
+
                     let _ = process_transaction(client);
                 }
 
