@@ -11,23 +11,26 @@ use cli::{Cli, Modes, Networks};
 use constants::{DB_PATH, NEAR_RPC_MAINNET, NEAR_RPC_TESTNET};
 use database::init_db;
 use near_jsonrpc_client::JsonRpcClient;
-//use serde::Deserialize;
-//use near_jsonrpc_client::methods;
-//use std::fs::File;
-//use std::io::BufReader;
-//use near_crypto::{InMemorySigner, KeyType, SecretKey};
-//use std::str::FromStr;
-//use near_primitives::views::QueryRequest;
-//use near_primitives::types::{BlockReference, Finality};
-//use near_jsonrpc_primitives::types::query::QueryResponseKind;
-//use near_primitives::transaction::{Action, FunctionCallAction, Transaction};
+use serde::Deserialize;
 
-// #[derive(Deserialize)]
-// struct KeyFile {
-//     account_id : String,
-//     public_key : String,
-//     private_key : String,
-// }
+#[derive(Deserialize, Debug)]
+struct EventData {
+    request_id: String,
+    start_time: u64,
+    reveal_miner_time: u64,
+    commit_miner_time: u64,
+    reveal_validator_time: u64,
+    commit_validator_time: u64,
+}
+
+#[derive(Deserialize, Debug)]
+struct EventJson {
+    standard: String,
+    version: String,
+    event: String,
+    data: Vec<EventData>,
+}
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,75 +62,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
-fn process_miner_transaction(client: &JsonRpcClient) -> Result<bool, Box<dyn std::error::Error>> {
-    // Implement your miner-specific logic here
-
-    // let file = File::open("/key-file.json")?;
-    // let reader = BufReader::new(file);
-    // let key_file: KeyFile = serde_json::from_reader(reader)?;
-
-    // // Crea el signer usando la clave privada del archivo JSON
-    // let private_key = SecretKey::from_str(&key_file.private_key)?;
-    // let signer = InMemorySigner::from_secret_key(key_file.account_id.parse()?, private_key);
-
-    // let account_id = signer.account_id.clone();
-    // let request = methods::query::RpcQueryRequest {
-    //     block_reference: BlockReference::Finality(Finality::Final),
-    //     request: QueryRequest::ViewAccount { account_id: account_id.clone() },
-    // };
-
-    // let response = client.call(request).await?;
-
-    // println!("Miner Account ID: {}", account_id);
-
-    // if let QueryResponseKind::ViewAccount(result) = response.kind {
-    //     println!("{:#?}", result);
-    // }
-
-    // // Access key
-    // let access_key_query_response = client
-    //     .call(methods::query::RpcQueryRequest {
-    //         block_reference: BlockReference::latest(),
-    //         request: near_primitives::views::QueryRequest::ViewAccessKey {
-    //             account_id: signer.account_id.clone(),
-    //             public_key: signer.public_key.clone(),
-    //         },
-    //     })
-    //     .await?;
-
-    // let current_nonce = match access_key_query_response.kind {
-    //     QueryResponseKind::AccessKey(access_key) => access_key.nonce,
-    //     _ => Err("failed to extract current nonce")?,
-    // };
-
-    // // transaction to sign
-    // let transaction = Transaction {
-    //     signer_id: signer.account_id.clone(),
-    //     public_key: signer.public_key.clone(),
-    //     nonce: current_nonce + 1,
-    //     receiver_id: "earthmindprotocol.testnet".parse()?,
-    //     block_hash: access_key_query_response.block_hash,
-    //     actions: vec![Action::FunctionCall(Box::new(FunctionCallAction {
-    //         method_name: "rate".to_string(),
-    //         args: serde_json::json!({
-    //             "account_id": other_account,
-    //             "rating": rating,
-    //         })
-    //         .to_string()
-    //         .into_bytes(),
-    //         gas: 100_000_000_000_000, // 100 TeraGas
-    //         deposit: 0,
-    //     }))],
-    // };
-    println!("Processing as miner: {:?}", client);
+fn process_miner_transaction(
+    client: &JsonRpcClient,
+    logs: Vec<String>,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    for log in logs {
+        println!("Miner Log: {}", log);
+        match process_log(&log) {
+            Ok(event) => {
+                for data in event.data {
+                    println!("Request ID: {}", data.request_id);
+                    println!("Start Time: {}", data.start_time);
+                    println!("Reveal Miner Time: {}", data.reveal_miner_time);
+                    println!("Commit Miner Time: {}", data.commit_miner_time);
+                    println!("Reveal Validator Time: {}", data.reveal_validator_time);
+                    println!("Commit Validator Time: {}", data.commit_validator_time);
+                }
+            }
+            Err(e) => println!("Failed to process log: {}", e),
+        }
+    }
     Ok(false)
 }
 
 fn process_validator_transaction(
     client: &JsonRpcClient,
+    logs: Vec<String>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
-    // Implement your validator-specific logic here
-    println!("Processing as validator: {:?}", client);
+    for log in logs {
+        println!("Validator Log: {}", log);
+        match process_log(&log) {
+            Ok(event) => {
+                for data in event.data {
+                    println!("Request ID: {}", data.request_id);
+                    println!("Start Time: {}", data.start_time);
+                    println!("Reveal Miner Time: {}", data.reveal_miner_time);
+                    println!("Commit Miner Time: {}", data.commit_miner_time);
+                    println!("Reveal Validator Time: {}", data.reveal_validator_time);
+                    println!("Commit Validator Time: {}", data.commit_validator_time);
+                }
+            }
+            Err(e) => println!("Failed to process log: {}", e),
+        }
+    }
     Ok(false)
+}
+
+fn process_log(log: &str) -> Result<EventJson, Box<dyn std::error::Error>> {
+    // Remove "EVENT_JSON:" prefix
+    let json_part = log.trim_start_matches("EVENT_JSON:");
+
+    // Deserialize from JSON to EventJson struct
+    let event: EventJson = serde_json::from_str(json_part)?;
+    
+    Ok(event)
 }

@@ -1,36 +1,17 @@
+use crate::constants::*;
+use crate::database::{load_last_processed_block, save_last_processed_block};
 use near_jsonrpc_client::errors::JsonRpcError;
 use near_jsonrpc_client::methods::block::RpcBlockError;
 use near_jsonrpc_client::methods::chunk::ChunkReference;
-use near_jsonrpc_client::methods::tx::TransactionInfo;
 use near_jsonrpc_client::{methods, JsonRpcClient};
+use near_jsonrpc_primitives::types::transactions::RpcTransactionResponse;
 use near_primitives::hash::CryptoHash;
 use near_primitives::types::{BlockId, BlockReference, Finality};
+use near_primitives::views::FinalExecutionOutcomeViewEnum;
 use near_primitives::views::{ActionView, BlockView, ChunkView};
 use near_sdk::AccountId;
-
-use crate::constants::*;
-use crate::database::{load_last_processed_block, save_last_processed_block};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-
-//use serde::Deserialize;
-
-// #[derive(Deserialize, Debug)]
-// struct EventData {
-//     request_id: String,
-//     start_time: u64,
-//     reveal_miner_time: u64,
-//     commit_miner_time: u64,
-//     reveal_validator_time: u64,
-//     commit_validator_time: u64,
-// }
-
-// #[derive(Deserialize, Debug)]
-// struct EventJson {
-//     standard: String,
-//     version: String,
-//     event: String,
-//     data: Vec<EventData>,
-// }
 
 pub fn specify_block_reference(last_processed_block: u64) -> BlockReference {
     if last_processed_block == 0 {
@@ -64,22 +45,16 @@ pub async fn fetch_chunk(
     let chunk_response = client.call(chunk_request).await;
 
     match chunk_response {
-        Ok(chunk_details) => {
-            //println!("{:#?}", chunk_details);
-            Ok(chunk_details)
-        }
+        Ok(chunk_details) => Ok(chunk_details),
         Err(err) => match err.handler_error() {
-            // Handle unknown chunk error
             Some(methods::chunk::RpcChunkError::UnknownChunk { .. }) => {
                 println!("(i) Unknown chunk!");
                 panic!("Unknown chunk!");
             }
-            // Handle other handler errors
             Some(err) => {
                 println!("(i) An error occurred `{:#?}`", err);
                 panic!("Other error!");
             }
-            // Handle non-handler errors
             _ => {
                 println!("(i) A non-handler error occurred `{:#?}`", err);
                 panic!("Non handled error!");
@@ -93,7 +68,7 @@ pub async fn find_transaction_in_block(
     block: &BlockView,
     account_id: &str,
     method_name: &str,
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
     for chunk_header in &block.chunks {
         let chunk_hash = chunk_header.chunk_hash;
         let chunk = fetch_chunk(client, chunk_hash).await?;
@@ -107,14 +82,62 @@ pub async fn find_transaction_in_block(
                     } = action
                     {
                         if action_method_name == method_name {
-                            return Ok(true);
+                            // Retorna el hash de la transacción
+                            return Ok(Some(transaction.hash.to_string()));
                         }
                     }
                 }
             }
         }
     }
-    Ok(false)
+    Ok(None)
+}
+
+pub async fn fetch_transaction_status(
+    client: &JsonRpcClient,
+    tx_hash: &str,
+    account_id: &AccountId,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let tx_hash =
+        CryptoHash::from_str(tx_hash).map_err(|e| format!("Failed to parse tx_hash: {}", e))?;
+
+    let transaction_status_request = methods::tx::RpcTransactionStatusRequest {
+        transaction_info: methods::tx::TransactionInfo::TransactionId {
+            tx_hash,
+            sender_account_id: account_id.clone(),
+        },
+        wait_until: near_primitives::views::TxExecutionStatus::Final,
+    };
+
+    let transaction_status_response = client.call(transaction_status_request).await?;
+
+    let logs = extract_logs(&transaction_status_response);
+
+    Ok(logs)
+}
+
+fn extract_logs(response: &RpcTransactionResponse) -> Vec<String> {
+    let mut logs = Vec::new();
+
+    if let Some(final_outcome_enum) = &response.final_execution_outcome {
+        match final_outcome_enum {
+            FinalExecutionOutcomeViewEnum::FinalExecutionOutcome(final_outcome) => {
+                logs.extend(final_outcome.transaction_outcome.outcome.logs.clone());
+
+                for receipt_outcome in &final_outcome.receipts_outcome {
+                    logs.extend(receipt_outcome.outcome.logs.clone());
+                }
+            }
+            FinalExecutionOutcomeViewEnum::FinalExecutionOutcomeWithReceipt(
+                final_outcome_with_receipt,
+            ) => {
+                // How we manage this case?
+                println!("Something is missing: {:?}", final_outcome_with_receipt);
+            }
+        }
+    }
+
+    logs
 }
 
 pub async fn run_mode<F>(
@@ -124,7 +147,7 @@ pub async fn run_mode<F>(
     process_transaction: F,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: Fn(&JsonRpcClient) -> Result<bool, Box<dyn std::error::Error>> + Send + Sync,
+    F: Fn(&JsonRpcClient, Vec<String>) -> Result<bool, Box<dyn std::error::Error>> + Send + Sync,
 {
     loop {
         let last_processed_block = load_last_processed_block(db)?;
@@ -136,33 +159,18 @@ where
                 println!("Processing block: {:#?}", block.header.height);
 
                 // Check if the block contains the transaction of interest
-                if find_transaction_in_block(&client, &block, ACCOUNT_TO_LISTEN, FUNCTION_TO_LISTEN)
-                    .await?
+                if let Some(tx_hash) = find_transaction_in_block(
+                    &client,
+                    &block,
+                    ACCOUNT_TO_LISTEN,
+                    FUNCTION_TO_LISTEN,
+                )
+                .await?
                 {
-                    println!("Found transaction in block: {}", block.header.height);
-                    // TODO: Implement your logic here to handle the found transaction
+                
+                    let logs = fetch_transaction_status(client, &tx_hash, &account_id).await?;
 
-                    //In the block variable, there aren't information about log.
-                    //println!("BLOCK IS: {:?}", block);
-
-                    //The log is in the account who call aour contract, using the CLI we obtain this value and using it with the block heigth
-                    // we can call the transaction info, where we can obtain the log.
-                    let block_hash = block.header.hash;
-
-                    let tx_status_request = methods::tx::RpcTransactionStatusRequest {
-                        transaction_info: TransactionInfo::TransactionId {
-                            tx_hash: block_hash,
-                            sender_account_id: account_id.clone(),
-                        },
-                        wait_until: near_primitives::views::TxExecutionStatus::Final,
-                    };
-
-                    let tx_status = client.call(tx_status_request).await?;
-                    println!("TRANSACTION STATUS: {:?}", tx_status);
-
-                    // And may be implement something like this 
-
-                    let _ = process_transaction(client);
+                    process_transaction(client, logs)?;
                 }
 
                 // Save the new block height as the last processed block
@@ -171,19 +179,16 @@ where
                 println!("Saved new block height: {}", new_block_height);
             }
             Err(err) => match err.handler_error() {
-                // Handle unknown block error
                 Some(methods::block::RpcBlockError::UnknownBlock { .. }) => {
                     println!("(i) Unknown block!");
-                    // We skip the unknown block and save the block height of the unknown block as the last processed block
                     let new_block_height = last_processed_block + 1;
                     save_last_processed_block(&db, new_block_height)?;
                     println!("Saved new block height: {}", new_block_height);
-                } // Handle other handled errors
+                }
                 Some(err) => {
                     println!("(i) An error occurred `{:#?}`", err);
                     panic!("Other error!");
                 }
-                // Non handled errors
                 _ => {
                     println!("(i) A non-handler error occurred `{:#?}`", err);
                     panic!("Non handled error!");
