@@ -1,4 +1,5 @@
 use clap::{Parser, ValueEnum};
+use near_crypto::SecretKey;
 use near_sdk::AccountId;
 
 #[derive(Parser)]
@@ -11,6 +12,12 @@ pub struct Cli {
 
     #[arg(long)]
     pub account_id: AccountId,
+
+    #[arg(long)]
+    pub private_key: SecretKey,
+
+    #[arg(long)]
+    pub answer : String,
 
     #[arg(long, default_value = "testnet")]
     pub network: Networks,

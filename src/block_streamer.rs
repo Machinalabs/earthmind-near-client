@@ -1,5 +1,6 @@
 use crate::constants::*;
 use crate::database::{load_last_processed_block, save_last_processed_block};
+use near_crypto::SecretKey;
 use near_jsonrpc_client::errors::JsonRpcError;
 use near_jsonrpc_client::methods::block::RpcBlockError;
 use near_jsonrpc_client::methods::chunk::ChunkReference;
@@ -144,10 +145,13 @@ pub async fn run_mode<F>(
     client: &JsonRpcClient,
     db: &Arc<Mutex<rocksdb::DB>>,
     account_id: AccountId,
+    secret_key: SecretKey,
+    answer : String,
     process_transaction: F,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: Fn(&JsonRpcClient, Vec<String>) -> Result<bool, Box<dyn std::error::Error>> + Send + Sync,
+    F: Fn(&JsonRpcClient, Vec<String>, AccountId, SecretKey, String) -> Fut +  Send + Sync, 
+    Fut: std::future::Future<Output = Result<bool, Box<dyn std::error::Error>>> + Send,
 {
     loop {
         let last_processed_block = load_last_processed_block(db)?;
@@ -170,7 +174,7 @@ where
                 
                     let logs = fetch_transaction_status(client, &tx_hash, &account_id).await?;
 
-                    process_transaction(client, logs)?;
+                    process_transaction(client, logs, account_id.clone(), secret_key.clone(), answer.clone())?;
                 }
 
                 // Save the new block height as the last processed block
