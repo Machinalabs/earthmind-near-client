@@ -42,4 +42,16 @@ impl TransactionProcessor for Validator {
         println!("Event Data: {:?}", event_data);
         Ok(true) // o el valor que corresponda
     }
+
+    async fn commit(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Implementación específica para Miner
+        println!("Miner Commit");
+        Ok(())
+    }
+
+    async fn reveal(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Implementación específica para Miner
+        println!("Miner Reveal");
+        Ok(())
+    }
 }
