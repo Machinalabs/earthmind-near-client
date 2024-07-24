@@ -35,10 +35,11 @@ impl Miner {
 impl TransactionProcessor for Miner {
     async fn process_transaction(
         &self,
-        _event_data: EventData,
+        event_data: EventData,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         // Implementación específica para Miner
         println!("Miner Processor");
+        println!("Event Data: {:?}", event_data);
         Ok(true) // o el valor que corresponda
     }
 }

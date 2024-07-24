@@ -35,10 +35,11 @@ impl Validator {
 impl TransactionProcessor for Validator {
     async fn process_transaction(
         &self,
-        _event_data: EventData,
+        event_data: EventData,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         // Implementación específica para Validator
         println!("Validator Processor");
+        println!("Event Data: {:?}", event_data);
         Ok(true) // o el valor que corresponda
     }
 }

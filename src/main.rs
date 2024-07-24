@@ -56,8 +56,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// callbacks -> function -> regresa una function que recibe el answer -> y asi evitar pasar por todos lados el answer
-
 // async fn process_miner_transaction(
 //     client: &JsonRpcClient,
 //     logs: Vec<String>,
@@ -102,11 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //     Ok(false)
 // }
 
-// async fn process_validator_transaction(
-//     client: &JsonRpcClient,
-//     logs: Vec<String>,
-//     account: AccountId,
-//     key: SecretKey,
+// async fn decode_logs(
+//     logs: Vec<String>
 // ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
 //     for log in logs {
 //         println!("Validator Log: {}", log);
@@ -125,16 +120,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //         }
 //     }
 //     Ok(false)
-// }
-
-// TODO: Mover esto a block streamer para que deserilize el log y lo pase a los processors como EventData....
-
-// fn process_log(log: &str) -> Result<EventJson, Box<dyn std::error::Error>> {
-//     // Remove "EVENT_JSON:" prefix
-//     let json_part = log.trim_start_matches("EVENT_JSON:");
-
-//     // Deserialize from JSON to EventJson struct
-//     let event: EventJson = serde_json::from_str(json_part)?;
-
-//     Ok(event)
 // }

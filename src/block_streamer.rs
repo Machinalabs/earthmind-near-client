@@ -1,5 +1,6 @@
 use crate::constants::*;
 use crate::database::{load_last_processed_block, save_last_processed_block};
+use crate::models::{EventData, EventLog};
 use crate::processors::TransactionProcessor;
 
 use std::str::FromStr;
@@ -145,10 +146,23 @@ fn extract_logs(response: &RpcTransactionResponse) -> Vec<String> {
     logs
 }
 
+fn process_log(log: &str) -> Result<EventData, Box<dyn std::error::Error>> {
+    let json_start = log.find("{").ok_or("JSON not found in log")?;
+    let json_str = &log[json_start..];
+
+    let event_log: EventLog = serde_json::from_str(json_str)?;
+
+    event_log
+        .data
+        .into_iter()
+        .next()
+        .ok_or_else(|| "No EventData found in log".into())
+}
+
 pub async fn start_polling(
     client: &JsonRpcClient,
     db: &Arc<Mutex<rocksdb::DB>>,
-    _processor: Arc<dyn TransactionProcessor>, // TODO
+    processor: Arc<dyn TransactionProcessor>, // TODO
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let last_processed_block = load_last_processed_block(db)?;
@@ -168,13 +182,27 @@ pub async fn start_polling(
                 )
                 .await?
                 {
-                    let _logs = get_logs(client, &tx_hash, &sender_account_id).await?;
+                    let logs = get_logs(client, &tx_hash, &sender_account_id).await?;
 
-                    // spawn...
-                    // let logs = get_logs(client, &tx_hash).await?;
+                    if logs.len() > 1 {
+                        panic!("More than one log found. Contract might have changed!");
+                    }
 
-                    // TODO: Poner aqui el processor pero con el evento deserializado
-                    // process_transaction(client, logs, account_id.clone(), secret_key.clone())?;
+                    match logs.first() {
+                        Some(log) => match process_log(log) {
+                            Ok(event) => {
+                                let processor_clone = Arc::clone(&processor);
+                                tokio::spawn(async move {
+                                    if let Err(e) = processor_clone.process_transaction(event).await
+                                    {
+                                        eprintln!("Error processing transaction: {}", e);
+                                    }
+                                });
+                            }
+                            Err(e) => println!("Failed to process log: {}", e),
+                        },
+                        None => println!("No logs found for this transaction"),
+                    }
                 }
 
                 // Save the new block height as the last processed block

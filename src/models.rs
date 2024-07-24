@@ -11,9 +11,9 @@ pub struct EventData {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct EventJson {
+pub struct EventLog {
     standard: String,
     version: String,
     event: String,
-    data: Vec<EventData>,
+    pub data: Vec<EventData>,
 }
