@@ -24,23 +24,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = Arc::new(Mutex::new(init_db(DB_PATH)?));
 
     // Connect to the RPC client
-    let client: JsonRpcClient;
+    let client: Arc<JsonRpcClient>;
 
     match cli.network {
         Networks::Mainnet => {
-            client = JsonRpcClient::connect(NEAR_RPC_MAINNET);
+            client = Arc::new(JsonRpcClient::connect(NEAR_RPC_MAINNET));
         }
         Networks::Testnet => {
-            client = JsonRpcClient::connect(NEAR_RPC_TESTNET);
+            client = Arc::new(JsonRpcClient::connect(NEAR_RPC_TESTNET));
         }
     }
 
     // Create the processor based on the mode (passed as argument to the CLI)
     let processor: Arc<dyn TransactionProcessor> = match cli.mode {
-        Modes::Miner => Arc::new(Miner::new(&client, &db, cli.account_id, cli.private_key)),
+        Modes::Miner => Arc::new(Miner::new(
+            client.clone(),
+            db.clone(),
+            cli.account_id,
+            cli.private_key,
+        )),
         Modes::Validator => Arc::new(Validator::new(
-            &client,
-            &db,
+            client.clone(),
+            db.clone(),
             cli.account_id,
             cli.private_key,
         )),

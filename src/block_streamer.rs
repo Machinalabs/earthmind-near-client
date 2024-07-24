@@ -1,5 +1,6 @@
 use crate::constants::*;
 use crate::database::{load_last_processed_block, save_last_processed_block};
+use crate::processors::TransactionProcessor;
 
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -108,7 +109,7 @@ pub async fn get_logs(
     let transaction_status_request = methods::tx::RpcTransactionStatusRequest {
         transaction_info: methods::tx::TransactionInfo::TransactionId {
             tx_hash,
-            sender_account_id: None,
+            sender_account_id: sender_account_id.clone(),
         },
         wait_until: near_primitives::views::TxExecutionStatus::Final,
     };
@@ -144,10 +145,10 @@ fn extract_logs(response: &RpcTransactionResponse) -> Vec<String> {
     logs
 }
 
-pub async fn start_polling<F>(
+pub async fn start_polling(
     client: &JsonRpcClient,
     db: &Arc<Mutex<rocksdb::DB>>,
-    processor: Arc<dyn TransactionProcessor>,
+    _processor: Arc<dyn TransactionProcessor>, // TODO
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let last_processed_block = load_last_processed_block(db)?;
@@ -167,7 +168,7 @@ pub async fn start_polling<F>(
                 )
                 .await?
                 {
-                    let logs = get_logs(client, &tx_hash, &sender_account_id).await?;
+                    let _logs = get_logs(client, &tx_hash, &sender_account_id).await?;
 
                     // spawn...
                     // let logs = get_logs(client, &tx_hash).await?;

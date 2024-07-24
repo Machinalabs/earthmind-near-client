@@ -1431,6 +1431,7 @@ name = "earthmind_client_near"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "clap",
  "hex 0.4.3",
  "near-crypto 0.23.0",

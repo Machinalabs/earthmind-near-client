@@ -1,4 +1,5 @@
 use crate::models::EventData;
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait TransactionProcessor: Send + Sync {
