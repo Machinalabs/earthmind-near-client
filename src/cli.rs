@@ -16,9 +16,6 @@ pub struct Cli {
     #[arg(long)]
     pub private_key: SecretKey,
 
-    #[arg(long)]
-    pub answer : String,
-
     #[arg(long, default_value = "testnet")]
     pub network: Networks,
 }

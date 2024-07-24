@@ -1,6 +1,9 @@
 use crate::constants::*;
 use crate::database::{load_last_processed_block, save_last_processed_block};
-use near_crypto::SecretKey;
+
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
+
 use near_jsonrpc_client::errors::JsonRpcError;
 use near_jsonrpc_client::methods::block::RpcBlockError;
 use near_jsonrpc_client::methods::chunk::ChunkReference;
@@ -8,11 +11,8 @@ use near_jsonrpc_client::{methods, JsonRpcClient};
 use near_jsonrpc_primitives::types::transactions::RpcTransactionResponse;
 use near_primitives::hash::CryptoHash;
 use near_primitives::types::{BlockId, BlockReference, Finality};
-use near_primitives::views::FinalExecutionOutcomeViewEnum;
-use near_primitives::views::{ActionView, BlockView, ChunkView};
+use near_primitives::views::{ActionView, BlockView, ChunkView, FinalExecutionOutcomeViewEnum};
 use near_sdk::AccountId;
-use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 
 pub fn specify_block_reference(last_processed_block: u64) -> BlockReference {
     if last_processed_block == 0 {
@@ -69,7 +69,7 @@ pub async fn find_transaction_in_block(
     block: &BlockView,
     account_id: &str,
     method_name: &str,
-) -> Result<Option<String>, Box<dyn std::error::Error>> {
+) -> Result<Option<(String, AccountId)>, Box<dyn std::error::Error>> {
     for chunk_header in &block.chunks {
         let chunk_hash = chunk_header.chunk_hash;
         let chunk = fetch_chunk(client, chunk_hash).await?;
@@ -83,8 +83,11 @@ pub async fn find_transaction_in_block(
                     } = action
                     {
                         if action_method_name == method_name {
-                            // Retorna el hash de la transacción
-                            return Ok(Some(transaction.hash.to_string()));
+                            // Return the transaction hash and the sender account ID
+                            return Ok(Some((
+                                transaction.hash.to_string(),
+                                transaction.signer_id.clone(),
+                            )));
                         }
                     }
                 }
@@ -94,10 +97,10 @@ pub async fn find_transaction_in_block(
     Ok(None)
 }
 
-pub async fn fetch_transaction_status(
+pub async fn get_logs(
     client: &JsonRpcClient,
     tx_hash: &str,
-    account_id: &AccountId,
+    sender_account_id: &AccountId,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let tx_hash =
         CryptoHash::from_str(tx_hash).map_err(|e| format!("Failed to parse tx_hash: {}", e))?;
@@ -105,7 +108,7 @@ pub async fn fetch_transaction_status(
     let transaction_status_request = methods::tx::RpcTransactionStatusRequest {
         transaction_info: methods::tx::TransactionInfo::TransactionId {
             tx_hash,
-            sender_account_id: account_id.clone(),
+            sender_account_id: None,
         },
         wait_until: near_primitives::views::TxExecutionStatus::Final,
     };
@@ -141,18 +144,11 @@ fn extract_logs(response: &RpcTransactionResponse) -> Vec<String> {
     logs
 }
 
-pub async fn run_mode<F>(
+pub async fn start_polling<F>(
     client: &JsonRpcClient,
     db: &Arc<Mutex<rocksdb::DB>>,
-    account_id: AccountId,
-    secret_key: SecretKey,
-    answer : String,
-    process_transaction: F,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-    F: Fn(&JsonRpcClient, Vec<String>, AccountId, SecretKey, String) -> Fut +  Send + Sync, 
-    Fut: std::future::Future<Output = Result<bool, Box<dyn std::error::Error>>> + Send,
-{
+    processor: Arc<dyn TransactionProcessor>,
+) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let last_processed_block = load_last_processed_block(db)?;
         println!("Last processed block: {}", last_processed_block);
@@ -163,7 +159,7 @@ where
                 println!("Processing block: {:#?}", block.header.height);
 
                 // Check if the block contains the transaction of interest
-                if let Some(tx_hash) = find_transaction_in_block(
+                if let Some((tx_hash, sender_account_id)) = find_transaction_in_block(
                     &client,
                     &block,
                     ACCOUNT_TO_LISTEN,
@@ -171,10 +167,13 @@ where
                 )
                 .await?
                 {
-                
-                    let logs = fetch_transaction_status(client, &tx_hash, &account_id).await?;
+                    let logs = get_logs(client, &tx_hash, &sender_account_id).await?;
 
-                    process_transaction(client, logs, account_id.clone(), secret_key.clone(), answer.clone())?;
+                    // spawn...
+                    // let logs = get_logs(client, &tx_hash).await?;
+
+                    // TODO: Poner aqui el processor pero con el evento deserializado
+                    // process_transaction(client, logs, account_id.clone(), secret_key.clone())?;
                 }
 
                 // Save the new block height as the last processed block
