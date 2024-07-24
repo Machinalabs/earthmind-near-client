@@ -1,8 +1,7 @@
-
 use anyhow::Ok;
+use common::utils::calculate_request_id;
 use near_workspaces::types::NearToken;
 use serde_json::json;
-use common::utils::calculate_request_id;
 
 pub mod common;
 
@@ -128,18 +127,25 @@ async fn test_request_governance_decision() -> anyhow::Result<()> {
         .transact()
         .await?;
 
-    println!("request_governance_decision_outcome: {:#?}", request_governance_decision_outcome);
+    println!(
+        "request_governance_decision_outcome: {:#?}",
+        request_governance_decision_outcome
+    );
     assert!(request_governance_decision_outcome.is_success());
-    
-    let request_id = calculate_request_id(protocol_account.id().clone(), "Should we change the rules?".to_string());
-    let expected = format!(r#"EVENT_JSON:{{"standard":"emip001","version":"1.0.0","event":"register_request","data":[{{"request_id":"{}"}}]}}"#, request_id);
+
+    let request_id = calculate_request_id(
+        protocol_account.id().clone(),
+        "Should we change the rules?".to_string(),
+    );
+    let expected = format!(
+        r#"EVENT_JSON:{{"standard":"emip001","version":"1.0.0","event":"register_request","data":[{{"request_id":"{}"}}]}}"#,
+        request_id
+    );
     let logs = request_governance_decision_outcome.logs().join("\n");
-    assert_eq!(expected,logs);
+    assert_eq!(expected, logs);
 
     Ok(())
 }
-
-
 
 /*
 #[tokio::test]

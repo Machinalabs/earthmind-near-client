@@ -1431,12 +1431,16 @@ name = "earthmind_client_near"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "hex 0.4.3",
+ "near-crypto 0.23.0",
  "near-jsonrpc-client 0.10.1",
+ "near-jsonrpc-primitives 0.23.0",
  "near-primitives 0.23.0",
  "near-sdk",
  "near-workspaces",
  "rocksdb",
+ "serde",
  "serde_json",
  "tokio",
 ]

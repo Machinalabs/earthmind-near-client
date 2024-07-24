@@ -1,77 +1,241 @@
-use near_jsonrpc_client::{methods, JsonRpcClient};
+use clap::Parser;
+use near_crypto::SecretKey;
 use std::sync::{Arc, Mutex};
-use tokio::time::{sleep, Duration};
 
 mod block_streamer;
+mod cli;
 mod constants;
 mod database;
 
-use block_streamer::{fetch_block, find_transaction_in_block, specify_block_reference};
-use constants::{ACCOUNT_TO_LISTEN, DB_PATH, FUNCTION_TO_LISTEN, NEAR_RPC_URL};
-use database::{init_db, load_last_processed_block, save_last_processed_block};
+use block_streamer::run_mode;
+use cli::{Cli, Modes, Networks};
+use constants::{DB_PATH, NEAR_RPC_MAINNET, NEAR_RPC_TESTNET};
+use database::init_db;
+use near_jsonrpc_client::{methods, JsonRpcClient};
+use serde::Deserialize;
+use near_sdk::AccountId;
+use near_crypto::InMemorySigner;
+use near_primitives::types::BlockReference;
+use near_primitives::transaction::Transaction;
+use near_jsonrpc_primitives::types::transactions::{RpcTransactionError,TransactionInfo};
+use near_primitives::action::{Action, FunctionCallAction};
+use near_primitives::views::TxExecutionStatus;
+use std::time;
+use near_jsonrpc_primitives::types::query::QueryResponseKind;
+
+//use std::str::FromStr;
+
+#[derive(Deserialize, Debug)]
+struct EventData {
+    request_id: String,
+    start_time: u64,
+    reveal_miner_time: u64,
+    commit_miner_time: u64,
+    reveal_validator_time: u64,
+    commit_validator_time: u64,
+}
+
+#[derive(Deserialize, Debug)]
+struct EventJson {
+    standard: String,
+    version: String,
+    event: String,
+    data: Vec<EventData>,
+}
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse();
+
     // Open RocksDB connection
     let db = Arc::new(Mutex::new(init_db(DB_PATH)?));
 
-    // Load the last processed block
-    let last_processed_block = load_last_processed_block(&db)?;
-    println!("Last processed block: {}", last_processed_block);
-
     // Connect to the RPC client
-    let client = JsonRpcClient::connect(NEAR_RPC_URL);
+    let client: JsonRpcClient;
 
-    loop {
-        // Load the last processed block
-        let last_processed_block = load_last_processed_block(&db)?;
-        println!("Last processed block: {}", last_processed_block);
-
-        // Determine the block reference to fetch
-        let block_reference = specify_block_reference(last_processed_block);
-
-        // Fetch the block
-        match fetch_block(&client, block_reference).await {
-            Ok(block) => {
-                println!("Processing block: {:#?}", block.header.height);
-
-                // Check if the block contains the transaction of interest
-                if find_transaction_in_block(&client, &block, ACCOUNT_TO_LISTEN, FUNCTION_TO_LISTEN)
-                    .await?
-                {
-                    println!("Found transaction in block: {}", block.header.height);
-                    // TODO: Implement your logic here to handle the found transaction
-                }
-
-                // Save the new block height as the last processed block
-                let new_block_height = block.header.height;
-                save_last_processed_block(&db, new_block_height)?;
-                println!("Saved new block height: {}", new_block_height);
-            }
-            Err(err) => match err.handler_error() {
-                // Handle unknown block error
-                Some(methods::block::RpcBlockError::UnknownBlock { .. }) => {
-                    println!("(i) Unknown block!");
-
-                    // We skip the unknown block and save the block height of the unknown block as the last processed block
-                    let new_block_height = last_processed_block + 1;
-                    save_last_processed_block(&db, new_block_height)?;
-                    println!("Saved new block height: {}", new_block_height);
-                }
-                // Handle other handled errors
-                Some(err) => {
-                    println!("(i) An error occurred `{:#?}`", err);
-                    panic!("Other error!");
-                }
-                // Non handled errors
-                _ => {
-                    println!("(i) A non-handler error occurred `{:#?}`", err);
-                    panic!("Non handled error!");
-                }
-            },
+    match cli.network {
+        Networks::Mainnet => {
+            client = JsonRpcClient::connect(NEAR_RPC_MAINNET);
         }
-
-        // Sleep for a short duration before checking for the next block
-        sleep(Duration::from_secs(2)).await;
+        Networks::Testnet => {
+            client = JsonRpcClient::connect(NEAR_RPC_TESTNET);
+        }
     }
+
+    match cli.mode {
+        Modes::Miner => {
+            run_mode(&client, &db, cli.account_id, cli.private_key, cli.answer, process_miner_transaction).await?;
+        }
+        Modes::Validator => {
+            run_mode(&client, &db, cli.account_id, cli.private_key, cli.answer, process_validator_transaction).await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn process_miner_transaction(
+    client: &JsonRpcClient,
+    logs: Vec<String>,
+    account_id: AccountId,
+    key: SecretKey, 
+    answer : String
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    for log in logs {
+        println!("Miner Log: {}", log);
+        match process_log(&log) {
+            Ok(event) => {
+                for data in event.data {
+                    println!("Request ID: {}", data.request_id);
+                    println!("Start Time: {}", data.start_time);
+                    println!("Reveal Miner Time: {}", data.reveal_miner_time);
+                    println!("Commit Miner Time: {}", data.commit_miner_time);
+                    println!("Reveal Validator Time: {}", data.reveal_validator_time);
+                    println!("Commit Validator Time: {}", data.commit_validator_time);
+
+                    //let signer_account = AccountId::from_str(&account_id).map_err(|e| format!("Failed to parse sender_account_id: {}", e))?;
+                    //let signer_private_key = key;
+                    let signer = near_crypto::InMemorySigner::from_secret_key(account_id.clone(), key.clone());
+                    
+                    let commit_miner_result = commit_by_miner(client, &signer, data.request_id.clone(), answer.clone()).await;
+
+                    match commit_miner_result {
+                        Ok(_) => println!("Commit by miner successful for request_id: {}", data.request_id),
+                        Err(e) => println!("Failed to commit by miner: {}", e),
+                    }
+                }
+            }
+            Err(e) => println!("Failed to process log: {}", e),
+        }
+    }
+    Ok(false)
+}
+
+async fn process_validator_transaction(
+    client: &JsonRpcClient,
+    logs: Vec<String>,
+    account: AccountId,
+    key: SecretKey,
+    answer :  String
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    for log in logs {
+        println!("Validator Log: {}", log);
+        match process_log(&log) {
+            Ok(event) => {
+                for data in event.data {
+                    println!("Request ID: {}", data.request_id);
+                    println!("Start Time: {}", data.start_time);
+                    println!("Reveal Miner Time: {}", data.reveal_miner_time);
+                    println!("Commit Miner Time: {}", data.commit_miner_time);
+                    println!("Reveal Validator Time: {}", data.reveal_validator_time);
+                    println!("Commit Validator Time: {}", data.commit_validator_time);
+
+                    
+                }
+            }
+            Err(e) => println!("Failed to process log: {}", e),
+        }
+    }
+    Ok(false)
+}
+
+fn process_log(log: &str) -> Result<EventJson, Box<dyn std::error::Error>> {
+    // Remove "EVENT_JSON:" prefix
+    let json_part = log.trim_start_matches("EVENT_JSON:");
+
+    // Deserialize from JSON to EventJson struct
+    let event: EventJson = serde_json::from_str(json_part)?;
+    
+    Ok(event)
+}
+
+async fn commit_by_miner(
+    client: &JsonRpcClient,
+    signer: &InMemorySigner,
+    request_id: String,
+    answer :  String
+) -> Result<(), Box<dyn std::error::Error>> {
+
+    let access_key_query_response = client.call(methods::query::RpcQueryRequest {
+        block_reference: BlockReference::latest(),
+        request: near_primitives::views::QueryRequest::ViewAccessKey {
+            account_id: signer.account_id.clone(),
+            public_key: signer.public_key.clone(),
+        },
+    }).await?;
+
+    let current_nonce = match access_key_query_response.kind {
+        QueryResponseKind::AccessKey(access_key) => access_key.nonce,
+        _ => Err("Failed to extract current nonce")?,
+    };
+
+    let transaction = Transaction {
+        signer_id : signer.account_id.clone(),
+        public_key : signer.public_key.clone(),
+        nonce : current_nonce + 1,
+        receiver_id : "earthmindprotocol.testnet".parse()?,
+        block_hash : access_key_query_response.block_hash,
+        actions: vec![Action::FunctionCall(Box::new(FunctionCallAction{
+            method_name: "commit_by_miner".to_string(), 
+            args: serde_json::json!({
+                "request_id" : request_id,
+                "answer" : answer,
+            }).to_string().into_bytes(),
+            gas: 100_000_000_000_000,
+            deposit: 0,
+        }))]
+    };
+
+    let tx_hash = transaction.get_hash_and_size().0;
+
+    let request = methods::send_tx::RpcSendTransactionRequest {
+        signed_transaction: transaction.sign(signer),
+        wait_until: TxExecutionStatus::Final,
+    };
+
+    let sent_at = time::Instant::now();
+    let response = match client.call(request).await {
+        Ok(response) => response,
+        Err(err) => {
+            match err.handler_error() {
+                Some(RpcTransactionError::TimeoutError) => {}
+                _ => Err(err)?,
+            }
+            loop {
+                let response = client
+                    .call(methods::tx::RpcTransactionStatusRequest {
+                        transaction_info: TransactionInfo::TransactionId {
+                            tx_hash,
+                            sender_account_id: signer.account_id.clone(),
+                        },
+                        wait_until: TxExecutionStatus::Final,
+                    })
+                    .await;
+                let received_at = time::Instant::now();
+                let delta = (received_at - sent_at).as_secs();
+
+                if delta > 60 {
+                    Err("time limit exceeded for the transaction to be recognized")?;
+                }
+
+                match response {
+                    Err(err) => match err.handler_error() {
+                        Some(RpcTransactionError::TimeoutError) => {}
+                        _ => Err(err)?,
+                    },
+                    Ok(response) => {
+                        break response;
+                    }
+                }
+            }
+        }
+    };
+
+    let received_at = time::Instant::now();
+    let delta = (received_at - sent_at).as_secs();
+    println!("response gotten after: {}s", delta);
+    println!("response: {:#?}", response);
+
+    Ok(())
 }
