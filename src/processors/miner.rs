@@ -49,7 +49,18 @@ impl TransactionProcessor for Miner {
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         println!("Miner Processor");
         println!("Event Data: {:?}", event_data);
-        Ok(true)
+
+        match self.commit(event_data.clone()).await {
+            Ok(_) => {
+                println!("Commit successful");
+                Ok(true)
+            }
+            Err(e) => {
+                println!("Failed to commit: {}", e);
+                Err(e)
+            }
+        }
+
     }
 
     async fn commit(
