@@ -1,45 +1,67 @@
 use near_crypto::InMemorySigner;
-use near_jsonrpc_client::JsonRpcClient;
 use near_primitives::{
     action::{Action, FunctionCallAction},
     types::{CryptoHash, Transaction},
 };
 use near_sdk::AccountId;
+use serde_json::Value;
+use std::sync::Arc;
 
 use crate::{cli::Networks, constants::*};
 
 pub struct TxBuilder {
     signer: Arc<InMemorySigner>,
     network: Networks,
+    method_name: String,
+    args: Value,
+    gas: u64,
+    deposit: u128,
 }
 
 impl TxBuilder {
     pub fn new(signer: Arc<InMemorySigner>, network: Networks) -> Self {
-        Self { signer, network }
+        Self {
+            signer,
+            network,
+            method_name: String::new(),
+            args: Value::Null,
+            gas: 100_000_000_000_000,
+            deposit: 0,
+        }
     }
 
-    pub fn build_transaction(
-        &self,
-        actions: Vec<Action>,
-        nonce: u64,
-        block_hash: CryptoHash,
-    ) -> (Transaction, CryptoHash) {
+    pub fn with_method_name(mut self, method_name: &str) -> Self {
+        self.method_name = method_name.to_string();
+        self
+    }
+
+    pub fn with_args(mut self, args: Value) -> Self {
+        self.args = args;
+        self
+    }
+
+    pub fn with_gas(mut self, gas: u64) -> Self {
+        self.gas = gas;
+        self
+    }
+
+    pub fn with_deposit(mut self, deposit: u128) -> Self {
+        self.deposit = deposit;
+        self
+    }
+
+    pub fn build(&self, nonce: u64, block_hash: CryptoHash) -> (Transaction, CryptoHash) {
         let transaction = Transaction {
             signer_id: self.signer.account_id.clone(),
             public_key: self.signer.public_key.clone(),
-            nonce: nonce,
+            nonce,
             receiver_id: self.get_receiver_id(),
             block_hash,
             actions: vec![Action::FunctionCall(Box::new(FunctionCallAction {
-                method_name: "commit_by_miner".to_string(),
-                args: serde_json::json!({
-                    "request_id": request_id,
-                    "answer": answer,
-                })
-                .to_string()
-                .into_bytes(),
-                gas: 100_000_000_000_000,
-                deposit: 0,
+                method_name: self.method_name.clone(),
+                args: serde_json::to_vec(&self.args).unwrap(),
+                gas: self.gas,
+                deposit: self.deposit,
             }))],
         };
 
@@ -53,30 +75,3 @@ impl TxBuilder {
         }
     }
 }
-
-// builder => withMethodName
-// builder => withArgs
-
-// methodNames: commit_by_miner, reveal_by_miner, reveal_by_validator, commit_by_validator
-// solo cambia:
-// method_name: "commit_by_miner".to_string(),
-//             args: serde_json::json!({
-//                 "request_id": request_id,
-//                 "answer": answer,
-//             })
-
-// luego
-// method_name: "reveal_by_miner".to_string(),
-//             args: serde_json::json!({
-//                 "request_id": request_id,
-//                 "answer": answer,
-//                 "message":message,
-//             })
-
-// luego
-// method_name: "reveal_by_miner".to_string(),
-// args: serde_json::json!({
-//     "request_id": request_id,
-//     "answer": answer,
-//     "message":message,
-// })

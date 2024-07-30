@@ -3,10 +3,13 @@ use std::sync::{Arc, Mutex};
 
 mod block_streamer;
 mod cli;
+mod clients;
 mod constants;
 mod database;
 mod models;
+mod nonce_manager;
 mod processors;
+mod tx_builder;
 
 use block_streamer::start_polling;
 use cli::{Cli, Modes, Networks};
@@ -25,6 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to the RPC client
     let client: Arc<JsonRpcClient>;
+    let nonce_manager = Arc::new(NonceManager::new(client.clone(), signer.clone()));
+    let tx_builder = Arc::new(TxBuilder::new(signer.clone(), cli.network));
 
     match cli.network {
         Networks::Mainnet => {
