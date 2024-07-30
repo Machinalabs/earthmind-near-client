@@ -1,5 +1,8 @@
-use clap::Parser;
 use std::sync::{Arc, Mutex};
+
+use clap::Parser;
+use near_crypto::InMemorySigner;
+use near_jsonrpc_client::JsonRpcClient;
 
 mod block_streamer;
 mod cli;
@@ -16,7 +19,9 @@ use block_streamer::start_polling;
 use cli::{Cli, Modes, Networks};
 use constants::{DB_PATH, DEFAULT_TIMEOUT, NEAR_RPC_MAINNET, NEAR_RPC_TESTNET};
 use database::init_db;
-use near_jsonrpc_client::JsonRpcClient;
+use nonce_manager::NonceManager;
+use tx_builder::TxBuilder;
+use tx_sender::TxSender;
 
 use crate::processors::{Miner, TransactionProcessor, Validator};
 
@@ -36,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create signer
     let signer = Arc::new(InMemorySigner::from_secret_key(
         cli.account_id.clone(),
-        SecretKey::from_str(&cli.private_key)?,
+        cli.private_key.clone(),
     ));
 
     // Initialize components

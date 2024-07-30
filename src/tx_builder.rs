@@ -1,7 +1,8 @@
 use near_crypto::InMemorySigner;
 use near_primitives::{
     action::{Action, FunctionCallAction},
-    types::{CryptoHash, Transaction},
+    hash::CryptoHash,
+    transaction::Transaction,
 };
 use near_sdk::AccountId;
 use serde_json::Value;

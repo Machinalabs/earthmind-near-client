@@ -1,4 +1,3 @@
-use crate::database::Database;
 use crate::models::EventData;
 use crate::nonce_manager::NonceManager;
 use crate::tx_builder::TxBuilder;
@@ -6,13 +5,15 @@ use crate::tx_sender::TxSender;
 
 use async_trait::async_trait;
 use near_sdk::AccountId;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+use super::TransactionProcessor;
 
 pub struct Validator {
     nonce_manager: Arc<NonceManager>,
     tx_builder: Arc<TxBuilder>,
     tx_sender: Arc<TxSender>,
-    db: Arc<Database>,
+    db: Arc<Mutex<rocksdb::DB>>,
     account_id: AccountId,
 }
 
@@ -21,7 +22,7 @@ impl Validator {
         nonce_manager: Arc<NonceManager>,
         tx_builder: Arc<TxBuilder>,
         tx_sender: Arc<TxSender>,
-        db: Arc<Database>,
+        db: Arc<Mutex<rocksdb::DB>>,
         account_id: AccountId,
     ) -> Self {
         Self {

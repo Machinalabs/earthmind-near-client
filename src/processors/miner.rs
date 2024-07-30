@@ -1,4 +1,3 @@
-use crate::database::Database;
 use crate::models::EventData;
 use crate::nonce_manager::NonceManager;
 use crate::tx_builder::TxBuilder;
@@ -6,13 +5,15 @@ use crate::tx_sender::TxSender;
 
 use async_trait::async_trait;
 use near_sdk::AccountId;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+use super::TransactionProcessor;
 
 pub struct Miner {
     nonce_manager: Arc<NonceManager>,
     tx_builder: Arc<TxBuilder>,
     tx_sender: Arc<TxSender>,
-    db: Arc<Database>,
+    db: Arc<Mutex<rocksdb::DB>>,
     account_id: AccountId,
 }
 
@@ -21,7 +22,7 @@ impl Miner {
         nonce_manager: Arc<NonceManager>,
         tx_builder: Arc<TxBuilder>,
         tx_sender: Arc<TxSender>,
-        db: Arc<Database>,
+        db: Arc<Mutex<rocksdb::DB>>,
         account_id: AccountId,
     ) -> Self {
         Self {
@@ -43,16 +44,17 @@ impl TransactionProcessor for Miner {
         println!("Miner Processor");
         println!("Event Data: {:?}", event_data);
 
-        match self.commit(event_data.clone()).await {
-            Ok(_) => {
-                println!("Commit successful");
-                Ok(true)
-            }
-            Err(e) => {
-                println!("Failed to commit: {}", e);
-                Err(e)
-            }
-        }
+        // match self.commit(event_data.clone()).await {
+        //     Ok(_) => {
+        //         println!("Commit successful");
+        //         Ok(true)
+        //     }
+        //     Err(e) => {
+        //         println!("Failed to commit: {}", e);
+        //         Err(e)
+        //     }
+        // }
+        Ok(true)
     }
 
     // async fn commit(

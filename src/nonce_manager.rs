@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
 use near_crypto::InMemorySigner;
+use near_jsonrpc_client::methods;
 use near_jsonrpc_client::JsonRpcClient;
+use near_jsonrpc_primitives::types::query::QueryResponseKind;
+use near_primitives::hash::CryptoHash;
 use near_primitives::types::BlockReference;
-use near_primitives::types::CryptoHash;
-use near_primitives::views::{QueryRequest, QueryResponseKind};
+use near_primitives::views::QueryRequest;
 
 pub struct NonceManager {
     client: Arc<JsonRpcClient>,

@@ -7,7 +7,7 @@ pub struct LLMResponse {
 
 #[async_trait]
 pub trait Client: Send + Sync {
-    fn get_answer(
+    async fn get_answer(
         &self,
         prompt: &str,
     ) -> Result<LLMResponse, Box<dyn std::error::Error + Send + Sync>>;

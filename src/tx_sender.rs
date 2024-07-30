@@ -1,9 +1,7 @@
 use near_jsonrpc_client::{methods, JsonRpcClient};
-use near_jsonrpc_primitives::types::{
-    transactions::{RpcTransactionError, TransactionInfo},
-    TxExecutionStatus,
-};
+use near_jsonrpc_primitives::types::transactions::{RpcTransactionError, TransactionInfo};
 use near_primitives::hash::CryptoHash;
+use near_primitives::views::TxExecutionStatus;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
