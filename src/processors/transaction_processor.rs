@@ -8,13 +8,13 @@ pub trait TransactionProcessor: Send + Sync {
         event_data: EventData,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>>;
 
-    async fn commit(
-        &self,
-        event_data: EventData,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    // async fn commit(
+    //     &self,
+    //     event_data: EventData,
+    // ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
-    async fn reveal(
-        &self,
-        event_data: EventData,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    // async fn reveal(
+    //     &self,
+    //     event_data: EventData,
+    // ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }

@@ -28,33 +28,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = Arc::new(Mutex::new(init_db(DB_PATH)?));
 
     // Connect to the RPC client
-    let client: Arc<JsonRpcClient>;
+    let client = Arc::new(match cli.network {
+        Networks::Mainnet => JsonRpcClient::connect(NEAR_RPC_MAINNET),
+        Networks::Testnet => JsonRpcClient::connect(NEAR_RPC_TESTNET),
+    });
+
+    // Create signer
+    let signer = Arc::new(InMemorySigner::from_secret_key(
+        cli.account_id.clone(),
+        SecretKey::from_str(&cli.private_key)?,
+    ));
+
+    // Initialize components
     let nonce_manager = Arc::new(NonceManager::new(client.clone(), signer.clone()));
     let tx_builder = Arc::new(TxBuilder::new(signer.clone(), cli.network));
     let tx_sender = Arc::new(TxSender::new(client.clone(), DEFAULT_TIMEOUT));
 
-    match cli.network {
-        Networks::Mainnet => {
-            client = Arc::new(JsonRpcClient::connect(NEAR_RPC_MAINNET));
-        }
-        Networks::Testnet => {
-            client = Arc::new(JsonRpcClient::connect(NEAR_RPC_TESTNET));
-        }
-    }
-
-    // Create the processor based on the mode (passed as argument to the CLI)
+    // Create the processor based on the mode
     let processor: Arc<dyn TransactionProcessor> = match cli.mode {
         Modes::Miner => Arc::new(Miner::new(
-            client.clone(),
+            nonce_manager.clone(),
+            tx_builder.clone(),
+            tx_sender.clone(),
             db.clone(),
             cli.account_id,
-            cli.private_key,
         )),
         Modes::Validator => Arc::new(Validator::new(
-            client.clone(),
+            nonce_manager.clone(),
+            tx_builder.clone(),
+            tx_sender.clone(),
             db.clone(),
             cli.account_id,
-            cli.private_key,
         )),
     };
 
