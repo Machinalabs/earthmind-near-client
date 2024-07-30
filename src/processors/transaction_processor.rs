@@ -1,20 +1,6 @@
 use crate::models::EventData;
 use async_trait::async_trait;
 
-use near_crypto::InMemorySigner;
-use near_jsonrpc_client::{methods, JsonRpcClient};
-
-use near_jsonrpc_primitives::types::{
-    query::QueryResponseKind, transactions::RpcTransactionError, transactions::TransactionInfo,
-};
-
-use near_primitives::{
-    action::Action, action::FunctionCallAction, hash::CryptoHash, transaction::Transaction,
-    types::BlockReference, views::TxExecutionStatus,
-};
-
-use std::time;
-
 #[async_trait]
 pub trait TransactionProcessor: Send + Sync {
     async fn process_transaction(
