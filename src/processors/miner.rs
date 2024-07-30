@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use near_crypto::{InMemorySigner, SecretKey};
 use near_jsonrpc_client::{methods, JsonRpcClient};
 
-use near_primitives::{views::TxExecutionStatus, hash::CryptoHash, transaction::Transaction, action::FunctionCallAction, action::Action};
+use near_primitives::{
+    action::Action, action::FunctionCallAction, hash::CryptoHash, transaction::Transaction,
+    views::TxExecutionStatus,
+};
 use near_sdk::{env, AccountId};
 
 use crate::models::EventData;
@@ -60,7 +63,6 @@ impl TransactionProcessor for Miner {
                 Err(e)
             }
         }
-
     }
 
     async fn commit(
@@ -68,6 +70,18 @@ impl TransactionProcessor for Miner {
         event_data: EventData,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Miner Commit");
+        // TODO: Integrar esto aqui
+        // let (current_nonce, block_hash) = get_nonce_and_tx_hash(client, signer).await?;
+
+        // let (transaction, tx_hash) =
+        //     build_commit_transaction(signer, request_id, answer, current_nonce, block_hash);
+
+        // let request = methods::send_tx::RpcSendTransactionRequest {
+        //     signed_transaction: transaction.sign(signer),
+        //     wait_until: TxExecutionStatus::Final,
+        // };
+
+        // send_transaction(client, request, tx_hash, signer).await?;
 
         // let answer = hash_miner_answer(
         //     self.signer.account_id.clone(),
@@ -94,9 +108,30 @@ impl TransactionProcessor for Miner {
         Ok(())
     }
 
-    async fn reveal(&self, event_data: EventData) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn reveal(
+        &self,
+        event_data: EventData,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Miner Reveal");
 
+        // TODO: Integrar esto aqui
+        // let (current_nonce, block_hash) = get_nonce_and_tx_hash(client, signer).await?;
+
+        // let (transaction, tx_hash) = build_reveal_miner_transaction(
+        //     signer,
+        //     request_id,
+        //     answer,
+        //     message,
+        //     current_nonce,
+        //     block_hash,
+        // );
+
+        // let request = methods::send_tx::RpcSendTransactionRequest {
+        //     signed_transaction: transaction.sign(signer),
+        //     wait_until: TxExecutionStatus::Final,
+        // };
+
+        // send_transaction(client, request, tx_hash, signer).await?;
         let answer = true;
         let message = "It's cool".to_string();
 
@@ -105,7 +140,7 @@ impl TransactionProcessor for Miner {
             &self.signer,
             event_data.request_id.clone(),
             answer,
-            message
+            message,
         )
         .await;
 
@@ -118,91 +153,4 @@ impl TransactionProcessor for Miner {
         }
         Ok(())
     }
-}
-
-// fn hash_miner_answer(
-//     miner: AccountId,
-//     request_id: String,
-//     answer: bool,
-//     message: String,
-// ) -> String {
-//     let concatenated_answer = format!("{}{}{}{}", request_id, miner, answer, message);
-//     let value = env::keccak256(concatenated_answer.as_bytes());
-
-//     //@dev Return the hash of the answer
-//     hex::encode(value)
-// }
-
-async fn commit_by_miner(
-    client: &JsonRpcClient,
-    signer: &InMemorySigner,
-    request_id: String,
-    answer: String,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let (current_nonce, block_hash) = get_nonce_and_tx_hash(client, signer).await?;
-
-    let (transaction, tx_hash) =
-        build_commit_transaction(signer, request_id, answer, current_nonce, block_hash);
-
-    let request = methods::send_tx::RpcSendTransactionRequest {
-        signed_transaction: transaction.sign(signer),
-        wait_until: TxExecutionStatus::Final,
-    };
-
-    send_transaction(client, request, tx_hash, signer).await?;
-
-    Ok(())
-}
-
-async fn reveal_by_miner(client: &JsonRpcClient,
-    signer: &InMemorySigner,
-    request_id: String,
-    answer: bool,
-    message: String)->Result<(), Box<dyn std::error::Error>> {
-
-        let (current_nonce, block_hash) = get_nonce_and_tx_hash(client, signer).await?;
-
-        let (transaction, tx_hash) =
-            build_reveal_miner_transaction(signer, request_id, answer, message, current_nonce, block_hash);
-    
-        let request = methods::send_tx::RpcSendTransactionRequest {
-            signed_transaction: transaction.sign(signer),
-            wait_until: TxExecutionStatus::Final,
-        };
-    
-        send_transaction(client, request, tx_hash, signer).await?;
-
-
-    Ok(())
-}
-
-pub fn build_reveal_miner_transaction(
-    signer: &InMemorySigner,
-    request_id: String,
-    answer: bool,
-    message: String, 
-    current_nonce: u64,
-    block_hash: CryptoHash,
-) -> (Transaction, CryptoHash) {
-    let transaction = Transaction {
-        signer_id: signer.account_id.clone(),
-        public_key: signer.public_key.clone(),
-        nonce: current_nonce + 1,
-        receiver_id: "earthmindprotocol.testnet".parse().unwrap(),
-        block_hash,
-        actions: vec![Action::FunctionCall(Box::new(FunctionCallAction {
-            method_name: "reveal_by_miner".to_string(),
-            args: serde_json::json!({
-                "request_id": request_id,
-                "answer": answer,
-                "message":message,
-            })
-            .to_string()
-            .into_bytes(),
-            gas: 100_000_000_000_000,
-            deposit: 0,
-        }))],
-    };
-
-    (transaction.clone(), transaction.get_hash_and_size().0)
 }
