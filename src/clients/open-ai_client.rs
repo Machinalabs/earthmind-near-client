@@ -1,4 +1,4 @@
-use crate::clients::client_trait::ClientTrait;
+use crate::clients::client::Client;
 
 pub struct OpenAiClient {
     pub api_key: String,
@@ -11,7 +11,7 @@ impl OpenAiClient {
 }
 
 #[async_trait]
-impl ClientTrait for OpenAiClient {
+impl Client for OpenAiClient {
     async fn get_answer(
         &self,
         prompt: &str,

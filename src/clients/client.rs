@@ -6,7 +6,7 @@ pub struct LLMResponse {
 }
 
 #[async_trait]
-pub trait ClientTrait: Send + Sync {
+pub trait Client: Send + Sync {
     fn get_answer(
         &self,
         prompt: &str,
