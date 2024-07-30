@@ -6,3 +6,5 @@ pub const NEAR_RPC_TESTNET: &str = "https://rpc.testnet.near.org";
 pub const NEAR_RPC_MAINNET: &str = "https://rpc.mainnet.near.org";
 pub const EARTHMIND_PROTOCOL_CONTRACT_TESTNET: &str = "earthmindprotocol.testnet";
 pub const EARTHMIND_PROTOCOL_CONTRACT_MAINNET: &str = "earthmindprotocol.near";
+pub const DEFAULT_TIMEOUT: u64 = Duration::from_secs(10);
+pub const DEFAULT_GAS: u64 = 300000000000000;

@@ -10,10 +10,11 @@ mod models;
 mod nonce_manager;
 mod processors;
 mod tx_builder;
+mod tx_sender;
 
 use block_streamer::start_polling;
 use cli::{Cli, Modes, Networks};
-use constants::{DB_PATH, NEAR_RPC_MAINNET, NEAR_RPC_TESTNET};
+use constants::{DB_PATH, DEFAULT_TIMEOUT, NEAR_RPC_MAINNET, NEAR_RPC_TESTNET};
 use database::init_db;
 use near_jsonrpc_client::JsonRpcClient;
 
@@ -30,6 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client: Arc<JsonRpcClient>;
     let nonce_manager = Arc::new(NonceManager::new(client.clone(), signer.clone()));
     let tx_builder = Arc::new(TxBuilder::new(signer.clone(), cli.network));
+    let tx_sender = Arc::new(TxSender::new(client.clone(), DEFAULT_TIMEOUT));
 
     match cli.network {
         Networks::Mainnet => {
