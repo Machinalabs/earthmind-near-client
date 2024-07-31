@@ -4,7 +4,8 @@ use crate::models::{EventData, EventLog};
 use crate::processors::TransactionProcessor;
 
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use near_jsonrpc_client::errors::JsonRpcError;
 use near_jsonrpc_client::methods::block::RpcBlockError;
@@ -165,7 +166,7 @@ pub async fn start_polling(
     processor: Arc<dyn TransactionProcessor>, // TODO
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
-        let last_processed_block = load_last_processed_block(db)?;
+        let last_processed_block = load_last_processed_block(db).await?;
         println!("Last processed block: {}", last_processed_block);
 
         let block_reference = specify_block_reference(last_processed_block);
@@ -207,14 +208,14 @@ pub async fn start_polling(
 
                 // Save the new block height as the last processed block
                 let new_block_height = block.header.height;
-                save_last_processed_block(db, new_block_height)?;
+                save_last_processed_block(db, new_block_height).await?;
                 println!("Saved new block height: {}", new_block_height);
             }
             Err(err) => match err.handler_error() {
                 Some(methods::block::RpcBlockError::UnknownBlock { .. }) => {
                     println!("(i) Unknown block!");
                     let new_block_height = last_processed_block + 1;
-                    save_last_processed_block(&db, new_block_height)?;
+                    save_last_processed_block(&db, new_block_height).await?;
                     println!("Saved new block height: {}", new_block_height);
                 }
                 Some(err) => {

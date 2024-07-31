@@ -1,6 +1,7 @@
 use crate::constants::LAST_PROCESSED_BLOCK_KEY;
 use rocksdb::{Options, DB};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 // Initialize the RocksDB instance
 pub fn init_db(path: &str) -> std::io::Result<DB> {
@@ -10,8 +11,8 @@ pub fn init_db(path: &str) -> std::io::Result<DB> {
 }
 
 // Load the last processed block height from RocksDB
-pub fn load_last_processed_block(db: &Arc<Mutex<DB>>) -> std::io::Result<u64> {
-    let db = db.lock().unwrap();
+pub async fn load_last_processed_block(db: &Arc<Mutex<DB>>) -> std::io::Result<u64> {
+    let db = db.lock().await;
     match db.get(LAST_PROCESSED_BLOCK_KEY) {
         Ok(Some(value)) => {
             let height = u64::from_le_bytes(value.try_into().expect("Invalid block height format"));
@@ -23,8 +24,11 @@ pub fn load_last_processed_block(db: &Arc<Mutex<DB>>) -> std::io::Result<u64> {
 }
 
 // Save the last processed block height to RocksDB
-pub fn save_last_processed_block(db: &Arc<Mutex<DB>>, block_height: u64) -> std::io::Result<()> {
-    let db = db.lock().unwrap();
+pub async fn save_last_processed_block(
+    db: &Arc<Mutex<DB>>,
+    block_height: u64,
+) -> std::io::Result<()> {
+    let db = db.lock().await;
     db.put(LAST_PROCESSED_BLOCK_KEY, &block_height.to_le_bytes())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }

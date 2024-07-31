@@ -1,5 +1,6 @@
 mod miner;
 mod transaction_processor;
+mod utils;
 mod validator;
 
 pub use miner::Miner;

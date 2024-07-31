@@ -20,7 +20,7 @@ impl TxSender {
         request: methods::send_tx::RpcSendTransactionRequest,
     ) -> Result<
         near_jsonrpc_primitives::types::transactions::RpcTransactionResponse,
-        Box<dyn std::error::Error>,
+        Box<dyn std::error::Error + Send + Sync>,
     > {
         let sent_at = Instant::now();
 
@@ -50,7 +50,7 @@ impl TxSender {
         sent_at: Instant,
     ) -> Result<
         near_jsonrpc_primitives::types::transactions::RpcTransactionResponse,
-        Box<dyn std::error::Error>,
+        Box<dyn std::error::Error + Send + Sync>,
     > {
         loop {
             let response = self

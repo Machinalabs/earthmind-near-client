@@ -4,14 +4,19 @@ use crate::tx_builder::TxBuilder;
 use crate::tx_sender::TxSender;
 
 use async_trait::async_trait;
+use near_jsonrpc_client::methods;
+use near_primitives::views::TxExecutionStatus;
 use near_sdk::AccountId;
-use std::sync::{Arc, Mutex};
 
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+use super::utils;
 use super::TransactionProcessor;
 
 pub struct Validator {
     nonce_manager: Arc<NonceManager>,
-    tx_builder: Arc<TxBuilder>,
+    tx_builder: Arc<Mutex<TxBuilder>>,
     tx_sender: Arc<TxSender>,
     db: Arc<Mutex<rocksdb::DB>>,
     account_id: AccountId,
@@ -20,7 +25,7 @@ pub struct Validator {
 impl Validator {
     pub fn new(
         nonce_manager: Arc<NonceManager>,
-        tx_builder: Arc<TxBuilder>,
+        tx_builder: Arc<Mutex<TxBuilder>>,
         tx_sender: Arc<TxSender>,
         db: Arc<Mutex<rocksdb::DB>>,
         account_id: AccountId,
@@ -44,77 +49,81 @@ impl TransactionProcessor for Validator {
         // Implementación específica para Validator
         println!("Validator Processor");
         println!("Event Data: {:?}", event_data);
-        Ok(true) // o el valor que corresponda
+
+        match self.commit(event_data.clone()).await {
+            Ok(_) => {
+                println!("Commit successful");
+                Ok(true)
+            }
+            Err(e) => {
+                println!("Failed to commit: {}", e);
+                Err(e)
+            }
+        }
     }
 
-    // async fn commit(
-    //     &self,
-    //     event_data: EventData,
-    // ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    //     println!("Validator Commit");
+    async fn commit(
+        &self,
+        event_data: EventData,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        println!("Validator Commit");
 
-    //     let answer = self.get_answer();
+        let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
 
-    //     let (current_nonce, block_hash) = get_nonce_and_tx_hash(&self.client, &self.signer).await?;
+        let mut tx_builder = self.tx_builder.lock().await;
 
-    //     let (transaction, tx_hash) = build_commit_transaction(
-    //         &self.signer,
-    //         event_data.request_id.clone(),
-    //         answer.clone(),
-    //         current_nonce,
-    //         block_hash,
-    //     );
+        let (tx, _) = tx_builder
+            .with_method_name("commit_by_validator")
+            .with_args(serde_json::json!({
+                "request_id": event_data.request_id,
+                "answer": "422fa60e22dc75c98d21bb975323c5c0b754d6b0b7a63d6446b3bbb628b65a5b",
+            }))
+            .build(nonce, block_hash);
 
-    //     let request = methods::send_tx::RpcSendTransactionRequest {
-    //         signed_transaction: transaction.sign(signer),
-    //         wait_until: TxExecutionStatus::Final,
-    //     };
+        let signer = &tx_builder.signer;
 
-    //     let commit_validator_result =
-    //         send_transaction(&self.client, request, tx_hash, self.signer).await?;
+        let request = methods::send_tx::RpcSendTransactionRequest {
+            signed_transaction: tx.sign(signer),
+            wait_until: TxExecutionStatus::Final,
+        };
 
-    //     match commit_validator_result {
-    //         Ok(_) => println!(
-    //             "Commit by validator successful for request_id: {}",
-    //             event_data.request_id.clone()
-    //         ),
-    //         Err(e) => println!("Failed to commit by validator: {}", e),
-    //     }
-    //     Ok(())
-    // }
+        self.tx_sender.send_transaction(request).await?;
 
-    // async fn reveal(
-    //     &self,
-    //     event_data: EventData,
-    // ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    //     let (current_nonce, block_hash) = get_nonce_and_tx_hash(client, signer).await?;
+        println!(
+            "Commit by miner successful for request_id: {}",
+            event_data.request_id
+        );
+        Ok(())
+    }
 
-    //     let answer = generate_validator_answer();
+    async fn reveal(
+        &self,
+        event_data: EventData,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        println!("Reveal by validator");
 
-    //     let message = "The best miners".to_string();
+        let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
 
-    //     let (transaction, tx_hash) = build_reveal_validator_transaction(
-    //         signer,
-    //         request_id,
-    //         answer,
-    //         message,
-    //         current_nonce,
-    //         block_hash,
-    //     );
+        let mut tx_builder = self.tx_builder.lock().await;
 
-    //     let request = methods::send_tx::RpcSendTransactionRequest {
-    //         signed_transaction: transaction.sign(signer),
-    //         wait_until: TxExecutionStatus::Final,
-    //     };
+        let (tx, _) = tx_builder
+            .with_method_name("reveal_by_validator")
+            .with_args(serde_json::json!({
+                "request_id": event_data.request_id,
+                "answer": utils::generate_validator_answer(),
+                "message" : "It's the best option",
+            }))
+            .build(nonce, block_hash);
 
-    //     let reveal_validator_result = send_transaction(client, request, tx_hash, signer).await?;
+        let signer = &tx_builder.signer;
 
-    //     match reveal_validator_result {
-    //         Ok(_) => println!(
-    //             "Reveal by validator successful for request_id: {}",
-    //             event_data.request_id.clone()
-    //         ),
-    //         Err(e) => println!("Failed to reveal by validator: {}", e),
-    //     }
-    // }
+        let request = methods::send_tx::RpcSendTransactionRequest {
+            signed_transaction: tx.sign(signer),
+            wait_until: TxExecutionStatus::Final,
+        };
+
+        self.tx_sender.send_transaction(request).await?;
+
+        Ok(())
+    }
 }

@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex; // Cambiado de std::sync::Mutex a tokio::sync::Mutex
 
 use clap::Parser;
 use near_crypto::InMemorySigner;
@@ -39,14 +40,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Create signer
-    let signer = Arc::new(InMemorySigner::from_secret_key(
-        cli.account_id.clone(),
-        cli.private_key.clone(),
-    ));
+    let signer = InMemorySigner::from_secret_key(cli.account_id.clone(), cli.private_key.clone());
 
     // Initialize components
-    let nonce_manager = Arc::new(NonceManager::new(client.clone(), signer.clone()));
-    let tx_builder = Arc::new(TxBuilder::new(signer.clone(), cli.network));
+    let nonce_manager = Arc::new(NonceManager::new(client.clone(), Arc::new(signer.clone())));
+    let tx_builder = Arc::new(Mutex::new(TxBuilder::new(signer, cli.network)));
     let tx_sender = Arc::new(TxSender::new(client.clone(), DEFAULT_TIMEOUT));
 
     // Create the processor based on the mode

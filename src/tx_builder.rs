@@ -6,12 +6,11 @@ use near_primitives::{
 };
 use near_sdk::AccountId;
 use serde_json::Value;
-use std::sync::Arc;
 
 use crate::{cli::Networks, constants::*};
 
 pub struct TxBuilder {
-    signer: Arc<InMemorySigner>,
+    pub signer: InMemorySigner,
     network: Networks,
     method_name: String,
     args: Value,
@@ -20,7 +19,7 @@ pub struct TxBuilder {
 }
 
 impl TxBuilder {
-    pub fn new(signer: Arc<InMemorySigner>, network: Networks) -> Self {
+    pub fn new(signer: InMemorySigner, network: Networks) -> Self {
         Self {
             signer,
             network,
@@ -31,22 +30,22 @@ impl TxBuilder {
         }
     }
 
-    pub fn with_method_name(mut self, method_name: &str) -> Self {
+    pub fn with_method_name(&mut self, method_name: &str) -> &mut Self {
         self.method_name = method_name.to_string();
         self
     }
 
-    pub fn with_args(mut self, args: Value) -> Self {
+    pub fn with_args(&mut self, args: Value) -> &mut Self {
         self.args = args;
         self
     }
 
-    pub fn with_gas(mut self, gas: u64) -> Self {
+    pub fn with_gas(&mut self, gas: u64) -> &mut Self {
         self.gas = gas;
         self
     }
 
-    pub fn with_deposit(mut self, deposit: u128) -> Self {
+    pub fn with_deposit(&mut self, deposit: u128) -> &mut Self {
         self.deposit = deposit;
         self
     }
