@@ -111,7 +111,7 @@ impl TransactionProcessor for Validator {
             .with_args(serde_json::json!({
                 "request_id": event_data.request_id,
                 "answer": utils::generate_validator_answer(),
-                "message" : "It's the best option",
+                "message" : "The best miners",
             }))
             .build(nonce, block_hash);
 

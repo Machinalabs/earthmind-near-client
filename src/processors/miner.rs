@@ -1,10 +1,14 @@
 use crate::models::EventData;
 use crate::nonce_manager::NonceManager;
+use crate::qx_builder::QueryBuilder;
+use crate::qx_sender::QuerySender;
 use crate::tx_builder::TxBuilder;
 use crate::tx_sender::TxSender;
+use crate::constants::ACCOUNT_TO_LISTEN;
 
 use async_trait::async_trait;
 use near_jsonrpc_client::methods;
+use near_jsonrpc_primitives::types::query::QueryResponseKind;
 use near_primitives::views::TxExecutionStatus;
 use near_sdk::AccountId;
 
@@ -66,6 +70,23 @@ impl TransactionProcessor for Miner {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Miner Commit");
 
+        let query_request = QueryBuilder::new(ACCOUNT_TO_LISTEN)
+            .with_method_name("get_commitment_hash")
+            .with_args(serde_json::json!({
+                "request_id": event_data.request_id,
+            }))
+            .build();
+
+        let response = query_sender.send_query(query_request).await?;
+
+        // Manejar la respuesta de la consulta
+        if let QueryResponseKind::CallResult(result) = response.kind {
+            let result_str = String::from_utf8(result.result)?;
+            println!("QUERY RESULT: {}", result_str);
+        }
+
+
+
         let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
 
         let mut tx_builder = self.tx_builder.lock().await;
@@ -109,7 +130,7 @@ impl TransactionProcessor for Miner {
             .with_args(serde_json::json!({
                 "request_id": event_data.request_id,
                 "answer": true,
-                "message" : "The best miners",
+                "message" : "It's the best option",
             }))
             .build(nonce, block_hash);
 

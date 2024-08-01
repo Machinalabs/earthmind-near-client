@@ -7,7 +7,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use near_jsonrpc_client::errors::JsonRpcError;
+use near_jsonrpc_client::errors::{JsonRpcError, JsonRpcServerError};
+
 use near_jsonrpc_client::methods::block::RpcBlockError;
 use near_jsonrpc_client::methods::chunk::ChunkReference;
 use near_jsonrpc_client::{methods, JsonRpcClient};
@@ -163,7 +164,7 @@ fn process_log(log: &str) -> Result<EventData, Box<dyn std::error::Error>> {
 pub async fn start_polling(
     client: &JsonRpcClient,
     db: &Arc<Mutex<rocksdb::DB>>,
-    processor: Arc<dyn TransactionProcessor>, // TODO
+    processor: Arc<dyn TransactionProcessor>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let last_processed_block = load_last_processed_block(db).await?;
@@ -223,8 +224,19 @@ pub async fn start_polling(
                     panic!("Other error!");
                 }
                 _ => {
-                    println!("(i) A non-handler error occurred `{:#?}`", err);
-                    panic!("Non handled error!");
+                    match err {
+                        JsonRpcError::ServerError(JsonRpcServerError::ResponseStatusError(
+                            status,
+                        )) => {
+                            println!("(i) Server error occurred: status code {}", status);
+                            // Puedes agregar un mecanismo de reintento aquí si es necesario.
+                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                        }
+                        _ => {
+                            println!("(i) A non-handler error occurred `{:#?}`", err);
+                            panic!("Non handled error!");
+                        }
+                    }
                 }
             },
         }
