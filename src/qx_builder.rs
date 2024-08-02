@@ -1,41 +1,48 @@
-
-
+use near_jsonrpc_client::methods;
+use near_primitives::types::{BlockReference, Finality, FunctionArgs};
 use near_primitives::views::QueryRequest;
 use serde_json::Value;
-use near_sdk::AccountId;
 
 pub struct QueryBuilder {
-    account_id: AccountId,
+    account_id: String,
     method_name: String,
     args: Value,
+    block_reference: BlockReference,
 }
 
 impl QueryBuilder {
-    pub fn new(account_id: &str) -> Self {
+    pub fn new(account_id: String) -> Self {
         Self {
-            account_id: account_id.parse().unwrap(),
+            account_id,
             method_name: String::new(),
             args: Value::Null,
+            block_reference: BlockReference::Finality(Finality::Final),
         }
     }
 
-    pub fn with_method_name(mut self, method_name: &str) -> Self {
+    pub fn with_method_name(&mut self, method_name: &str) -> &mut Self {
         self.method_name = method_name.to_string();
         self
     }
 
-    pub fn with_args(mut self, args: Value) -> Self {
+    pub fn with_args(&mut self, args: Value) -> &mut Self {
         self.args = args;
         self
     }
 
-    pub fn build(self) -> QueryRequest {
-        QueryRequest::CallFunction {
-            account_id: self.account_id,
-            method_name: self.method_name,
-            args: near_primitives::types::FunctionArgs::from(
-                serde_json::to_vec(&self.args).unwrap(),
-            ),
+    pub fn with_block_reference(&mut self, block_reference: BlockReference) -> &mut Self {
+        self.block_reference = block_reference;
+        self
+    }
+
+    pub fn build(&self) -> methods::query::RpcQueryRequest {
+        methods::query::RpcQueryRequest {
+            block_reference: self.block_reference.clone(),
+            request: QueryRequest::CallFunction {
+                account_id: self.account_id.parse().unwrap(),
+                method_name: self.method_name.clone(),
+                args: FunctionArgs::from(serde_json::to_string(&self.args).unwrap().into_bytes()),
+            },
         }
     }
 }

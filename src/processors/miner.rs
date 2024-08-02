@@ -1,16 +1,16 @@
+use crate::constants::ACCOUNT_TO_LISTEN;
 use crate::models::EventData;
 use crate::nonce_manager::NonceManager;
 use crate::qx_builder::QueryBuilder;
 use crate::qx_sender::QuerySender;
 use crate::tx_builder::TxBuilder;
 use crate::tx_sender::TxSender;
-use crate::constants::ACCOUNT_TO_LISTEN;
 
 use async_trait::async_trait;
 use near_jsonrpc_client::methods;
-use near_jsonrpc_primitives::types::query::QueryResponseKind;
 use near_primitives::views::TxExecutionStatus;
 use near_sdk::AccountId;
+use tokio::time::{sleep, Duration};
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -55,10 +55,26 @@ impl TransactionProcessor for Miner {
         match self.commit(event_data.clone()).await {
             Ok(_) => {
                 println!("Commit successful");
-                Ok(true)
+                //Ok(true)
             }
             Err(e) => {
                 println!("Failed to commit: {}", e);
+                //Err(e)
+            }
+        }
+
+        // Wait 30 seconds
+        sleep(Duration::from_secs(30)).await;
+
+        // Miner reveal
+
+        match self.reveal(event_data.clone()).await {
+            Ok(_) => {
+                println!("Reveal successful");
+                Ok(true)
+            }
+            Err(e) => {
+                println!("Failed to reveal: {}", e);
                 Err(e)
             }
         }
@@ -70,22 +86,20 @@ impl TransactionProcessor for Miner {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Miner Commit");
 
-        let query_request = QueryBuilder::new(ACCOUNT_TO_LISTEN)
-            .with_method_name("get_commitment_hash")
+        let query = QueryBuilder::new(ACCOUNT_TO_LISTEN.to_string())
+            .with_method_name("hash_miner_answer")
             .with_args(serde_json::json!({
+                "miner": self.account_id.to_string(),
                 "request_id": event_data.request_id,
+                "answer": true,
+                "message": "It's the best option",
             }))
             .build();
 
-        let response = query_sender.send_query(query_request).await?;
+        let query_sender = QuerySender::new(self.tx_sender.client.clone());
+        let query_result = query_sender.send_query(query).await?;
 
-        // Manejar la respuesta de la consulta
-        if let QueryResponseKind::CallResult(result) = response.kind {
-            let result_str = String::from_utf8(result.result)?;
-            println!("QUERY RESULT: {}", result_str);
-        }
-
-
+        println!("QUERY RESULT: {}", query_result);
 
         let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
 
@@ -95,7 +109,7 @@ impl TransactionProcessor for Miner {
             .with_method_name("commit_by_miner")
             .with_args(serde_json::json!({
                 "request_id": event_data.request_id,
-                "answer": "422fa60e22dc75c98d21bb975323c5c0b754d6b0b7a63d6446b3bbb628b65a5b",
+                "answer": query_result,
             }))
             .build(nonce, block_hash);
 

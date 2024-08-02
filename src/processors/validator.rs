@@ -1,8 +1,10 @@
 use crate::models::EventData;
 use crate::nonce_manager::NonceManager;
+use crate::qx_sender::QuerySender;
 use crate::tx_builder::TxBuilder;
 use crate::tx_sender::TxSender;
 
+use crate::qx_builder::QueryBuilder;
 use async_trait::async_trait;
 use near_jsonrpc_client::methods;
 use near_primitives::views::TxExecutionStatus;
@@ -68,6 +70,23 @@ impl TransactionProcessor for Validator {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Validator Commit");
 
+        let answer = utils::generate_validator_answer();
+
+        let query = QueryBuilder::new("earthmindprotocol.testnet".to_string())
+            .with_method_name("hash_validator_answer")
+            .with_args(serde_json::json!({
+                "validator": self.account_id.to_string(),
+                "request_id": event_data.request_id,
+                "answer": answer,
+                "message": "This are the best miners",
+            }))
+            .build();
+
+        let query_sender = QuerySender::new(self.tx_sender.client.clone());
+        let query_result = query_sender.send_query(query).await?;
+
+        println!("QUERY RESULT: {}", query_result);
+
         let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
 
         let mut tx_builder = self.tx_builder.lock().await;
@@ -76,7 +95,7 @@ impl TransactionProcessor for Validator {
             .with_method_name("commit_by_validator")
             .with_args(serde_json::json!({
                 "request_id": event_data.request_id,
-                "answer": "422fa60e22dc75c98d21bb975323c5c0b754d6b0b7a63d6446b3bbb628b65a5b",
+                "answer": query_result,
             }))
             .build(nonce, block_hash);
 
@@ -90,7 +109,7 @@ impl TransactionProcessor for Validator {
         self.tx_sender.send_transaction(request).await?;
 
         println!(
-            "Commit by miner successful for request_id: {}",
+            "Commit by validator successful for request_id: {}",
             event_data.request_id
         );
         Ok(())
@@ -111,7 +130,7 @@ impl TransactionProcessor for Validator {
             .with_args(serde_json::json!({
                 "request_id": event_data.request_id,
                 "answer": utils::generate_validator_answer(),
-                "message" : "The best miners",
+                "message": "This are the best miners",
             }))
             .build(nonce, block_hash);
 
