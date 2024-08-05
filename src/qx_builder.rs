@@ -30,11 +30,6 @@ impl QueryBuilder {
         self
     }
 
-    pub fn with_block_reference(&mut self, block_reference: BlockReference) -> &mut Self {
-        self.block_reference = block_reference;
-        self
-    }
-
     pub fn build(&self) -> methods::query::RpcQueryRequest {
         methods::query::RpcQueryRequest {
             block_reference: self.block_reference.clone(),

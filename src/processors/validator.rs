@@ -1,16 +1,19 @@
+use crate::constants::ACCOUNT_TO_LISTEN;
 use crate::models::EventData;
 use crate::nonce_manager::NonceManager;
+use crate::qx_builder::QueryBuilder;
 use crate::qx_sender::QuerySender;
 use crate::tx_builder::TxBuilder;
 use crate::tx_sender::TxSender;
 
-use crate::qx_builder::QueryBuilder;
+
 use async_trait::async_trait;
 use near_jsonrpc_client::methods;
 use near_primitives::views::TxExecutionStatus;
 use near_sdk::AccountId;
 
 use std::sync::Arc;
+use tokio::time::{sleep, Duration};
 use tokio::sync::Mutex;
 
 use super::utils;
@@ -48,17 +51,31 @@ impl TransactionProcessor for Validator {
         &self,
         event_data: EventData,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        // Implementación específica para Validator
         println!("Validator Processor");
         println!("Event Data: {:?}", event_data);
 
+        sleep(Duration::from_secs(50)).await;
+
         match self.commit(event_data.clone()).await {
             Ok(_) => {
-                println!("Commit successful");
+                println!("Commit validator successful");
+                //Ok(true)
+            }
+            Err(e) => {
+                println!("Failed to commit by validator: {}", e);
+                //Err(e)
+            }
+        }
+
+        sleep(Duration::from_secs(90)).await;
+
+        match self.reveal(event_data.clone()).await {
+            Ok(_) => {
+                println!("Reveal validator successful");
                 Ok(true)
             }
             Err(e) => {
-                println!("Failed to commit: {}", e);
+                println!("Failed to reveal by validator: {}", e);
                 Err(e)
             }
         }
@@ -70,9 +87,21 @@ impl TransactionProcessor for Validator {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Validator Commit");
 
+        let query = QueryBuilder::new(ACCOUNT_TO_LISTEN.to_string())
+        .with_method_name("get_list_miners_that_commit_and_reveal")
+        .with_args(serde_json::json!({
+            "request_id": event_data.request_id
+        }))
+        .build();
+
+        let query_sender = QuerySender::new(self.tx_sender.client.clone());
+        let participant_miners = query_sender.send_query(query).await?;
+
+        println!("PARTICIPANT MINERS: {:?}", participant_miners);
+
         let answer = utils::generate_validator_answer();
 
-        let query = QueryBuilder::new("earthmindprotocol.testnet".to_string())
+        let query = QueryBuilder::new(ACCOUNT_TO_LISTEN.to_string())
             .with_method_name("hash_validator_answer")
             .with_args(serde_json::json!({
                 "validator": self.account_id.to_string(),

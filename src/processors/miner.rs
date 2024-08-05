@@ -54,11 +54,11 @@ impl TransactionProcessor for Miner {
 
         match self.commit(event_data.clone()).await {
             Ok(_) => {
-                println!("Commit successful");
+                println!("Commit miner successful");
                 //Ok(true)
             }
             Err(e) => {
-                println!("Failed to commit: {}", e);
+                println!("Failed to commit by miner: {}", e);
                 //Err(e)
             }
         }
@@ -70,11 +70,11 @@ impl TransactionProcessor for Miner {
 
         match self.reveal(event_data.clone()).await {
             Ok(_) => {
-                println!("Reveal successful");
+                println!("Reveal miner successful");
                 Ok(true)
             }
             Err(e) => {
-                println!("Failed to reveal: {}", e);
+                println!("Failed to reveal by miner: {}", e);
                 Err(e)
             }
         }
