@@ -1,3 +1,4 @@
+use crate::block_streamer::extract_logs;
 use crate::constants::ACCOUNT_TO_LISTEN;
 use crate::models::EventData;
 use crate::nonce_manager::NonceManager;
@@ -5,7 +6,6 @@ use crate::qx_builder::QueryBuilder;
 use crate::qx_sender::QuerySender;
 use crate::tx_builder::TxBuilder;
 use crate::tx_sender::TxSender;
-use crate::block_streamer::extract_logs;
 
 use async_trait::async_trait;
 use near_jsonrpc_client::methods;

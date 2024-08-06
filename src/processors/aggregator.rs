@@ -70,6 +70,8 @@ impl TransactionProcessor for Aggregator {
         };
 
         let tx_response = self.tx_sender.send_transaction(request).await?;
+        println!("TRANSACTION RESPONSE AGGREGATOR: {:?}", tx_response);
+
         let log_tx = extract_logs(&tx_response);
         println!("TOP_TEN: {:?}", log_tx);
         Ok(true)

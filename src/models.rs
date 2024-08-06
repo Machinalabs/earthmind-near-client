@@ -3,11 +3,11 @@ use serde::Deserialize;
 #[derive(Deserialize, Debug, Clone)]
 pub struct EventData {
     pub request_id: String,
-    start_time: u64,
-    reveal_miner_time: u64,
-    commit_miner_time: u64,
-    reveal_validator_time: u64,
-    commit_validator_time: u64,
+    pub start_time: u64,
+    pub reveal_miner_time: u64,
+    pub commit_miner_time: u64,
+    pub reveal_validator_time: u64,
+    pub commit_validator_time: u64,
 }
 
 #[derive(Deserialize, Debug)]

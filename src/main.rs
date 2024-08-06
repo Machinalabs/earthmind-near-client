@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tokio::sync::Mutex; 
+use tokio::sync::Mutex;
 
 use clap::Parser;
 use near_crypto::InMemorySigner;
@@ -29,7 +29,7 @@ use tx_sender::TxSender;
 use crate::processors::{Aggregator, Miner, TransactionProcessor, Validator};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli = Cli::parse();
 
     // Open RocksDB connection
@@ -76,6 +76,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     //start_polling(&client, &db, processor).await?;
-    start_polling(&client, &db, processor, aggregator).await?;
+    start_polling(client, &db, processor, aggregator).await?;
     Ok(())
 }

@@ -2,6 +2,13 @@ use crate::constants::*;
 use crate::database::{load_last_processed_block, save_last_processed_block};
 use crate::models::{EventData, EventLog};
 use crate::processors::TransactionProcessor;
+
+//use crate::nonce_manager::NonceManager;
+use crate::qx_builder::QueryBuilder;
+use crate::qx_sender::QuerySender;
+//use crate::tx_builder::TxBuilder;
+//use crate::tx_sender::TxSender;
+
 use crate::Aggregator;
 
 use std::str::FromStr;
@@ -29,7 +36,7 @@ pub fn specify_block_reference(last_processed_block: u64) -> BlockReference {
 }
 
 pub async fn fetch_block(
-    client: &JsonRpcClient,
+    client: &Arc<JsonRpcClient>,
     block_reference: BlockReference,
 ) -> Result<BlockView, JsonRpcError<RpcBlockError>> {
     let block_request = methods::block::RpcBlockRequest { block_reference };
@@ -38,9 +45,9 @@ pub async fn fetch_block(
 }
 
 pub async fn fetch_chunk(
-    client: &JsonRpcClient,
+    client: &Arc<JsonRpcClient>,
     chunk_hash: CryptoHash,
-) -> Result<ChunkView, Box<dyn std::error::Error>> {
+) -> Result<ChunkView, Box<dyn std::error::Error + Send + Sync>> {
     let chunk_reference = ChunkReference::ChunkHash {
         chunk_id: chunk_hash,
     };
@@ -71,14 +78,14 @@ pub async fn fetch_chunk(
 }
 
 pub async fn find_transaction_in_block(
-    client: &JsonRpcClient,
+    client: &Arc<JsonRpcClient>,
     block: &BlockView,
     account_id: &str,
     method_name: &str,
-) -> Result<Option<(String, AccountId)>, Box<dyn std::error::Error>> {
+) -> Result<Option<(String, AccountId)>, Box<dyn std::error::Error + Send + Sync>> {
     for chunk_header in &block.chunks {
         let chunk_hash = chunk_header.chunk_hash;
-        let chunk = fetch_chunk(client, chunk_hash).await?;
+        let chunk = fetch_chunk(&client, chunk_hash).await?;
 
         for transaction in &chunk.transactions {
             if transaction.receiver_id == account_id {
@@ -104,10 +111,10 @@ pub async fn find_transaction_in_block(
 }
 
 pub async fn get_logs(
-    client: &JsonRpcClient,
+    client: &Arc<JsonRpcClient>,
     tx_hash: &str,
     sender_account_id: &AccountId,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let tx_hash =
         CryptoHash::from_str(tx_hash).map_err(|e| format!("Failed to parse tx_hash: {}", e))?;
 
@@ -150,7 +157,7 @@ pub fn extract_logs(response: &RpcTransactionResponse) -> Vec<String> {
     logs
 }
 
-fn process_log(log: &str) -> Result<EventData, Box<dyn std::error::Error>> {
+fn process_log(log: &str) -> Result<EventData, Box<dyn std::error::Error + Send + Sync>> {
     let json_start = log.find("{").ok_or("JSON not found in log")?;
     let json_str = &log[json_start..];
 
@@ -248,17 +255,17 @@ fn process_log(log: &str) -> Result<EventData, Box<dyn std::error::Error>> {
 // }
 
 pub async fn start_polling(
-    client: &JsonRpcClient,
+    client: Arc<JsonRpcClient>,
     db: &Arc<Mutex<rocksdb::DB>>,
     processor: Arc<dyn TransactionProcessor>,
     aggregator: Arc<Aggregator>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send +  Sync>> {
     loop {
         let last_processed_block = load_last_processed_block(db).await?;
         println!("Last processed block: {}", last_processed_block);
 
         let block_reference = specify_block_reference(last_processed_block);
-        match fetch_block(client, block_reference).await {
+        match fetch_block(&client, block_reference).await {
             Ok(block) => {
                 println!("Processing block: {:#?}", block.header.height);
 
@@ -270,7 +277,7 @@ pub async fn start_polling(
                 )
                 .await?
                 {
-                    let logs = get_logs(client, &tx_hash, &sender_account_id).await?;
+                    let logs = get_logs(&client, &tx_hash, &sender_account_id).await?;
 
                     if logs.len() > 1 {
                         panic!("More than one log found. Contract might have changed!");
@@ -281,6 +288,8 @@ pub async fn start_polling(
                             let processor_clone = Arc::clone(&processor);
                             let aggregator_clone = Arc::clone(&aggregator);
                             let event_clone = event.clone();
+
+                            get_stage(&client, event_clone.clone()).await?;
 
                             tokio::spawn(async move {
                                 if let Err(e) = processor_clone.process_transaction(event).await {
@@ -340,4 +349,23 @@ pub async fn start_polling(
 
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }
+}
+
+pub async fn get_stage(
+    client: &Arc<JsonRpcClient>,
+    event_data: EventData,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let query = QueryBuilder::new(ACCOUNT_TO_LISTEN.to_string())
+        .with_method_name("get_stage")
+        .with_args(serde_json::json!({
+            "start_time": event_data.start_time,
+        }))
+        .build();
+
+    let query_sender = QuerySender::new(client.clone());
+    let stage = query_sender.send_query(query).await?;
+
+    println!("STAGE {:?}", stage);
+
+    Ok(())
 }
