@@ -2,10 +2,12 @@ use crate::constants::*;
 use crate::database::{load_last_processed_block, save_last_processed_block};
 use crate::models::{EventData, EventLog};
 use crate::processors::TransactionProcessor;
+use crate::Aggregator;
 
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::time::Duration;
 
 use near_jsonrpc_client::errors::{JsonRpcError, JsonRpcServerError};
 
@@ -124,7 +126,7 @@ pub async fn get_logs(
     Ok(logs)
 }
 
-fn extract_logs(response: &RpcTransactionResponse) -> Vec<String> {
+pub fn extract_logs(response: &RpcTransactionResponse) -> Vec<String> {
     let mut logs = Vec::new();
 
     if let Some(final_outcome_enum) = &response.final_execution_outcome {
@@ -161,10 +163,95 @@ fn process_log(log: &str) -> Result<EventData, Box<dyn std::error::Error>> {
         .ok_or_else(|| "No EventData found in log".into())
 }
 
+// pub async fn start_polling(
+//     client: &JsonRpcClient,
+//     db: &Arc<Mutex<rocksdb::DB>>,
+//     processor: Arc<dyn TransactionProcessor>,
+// ) -> Result<(), Box<dyn std::error::Error>> {
+//     loop {
+//         let last_processed_block = load_last_processed_block(db).await?;
+//         println!("Last processed block: {}", last_processed_block);
+
+//         let block_reference = specify_block_reference(last_processed_block);
+//         match fetch_block(client, block_reference).await {
+//             Ok(block) => {
+//                 println!("Processing block: {:#?}", block.header.height);
+
+//                 // Check if the block contains the transaction of interest
+//                 if let Some((tx_hash, sender_account_id)) = find_transaction_in_block(
+//                     &client,
+//                     &block,
+//                     ACCOUNT_TO_LISTEN,
+//                     FUNCTION_TO_LISTEN,
+//                 )
+//                 .await?
+//                 {
+//                     let logs = get_logs(client, &tx_hash, &sender_account_id).await?;
+
+//                     if logs.len() > 1 {
+//                         panic!("More than one log found. Contract might have changed!");
+//                     }
+
+//                     match logs.first() {
+//                         Some(log) => match process_log(log) {
+//                             Ok(event) => {
+//                                 let processor_clone = Arc::clone(&processor);
+//                                 tokio::spawn(async move {
+//                                     if let Err(e) = processor_clone.process_transaction(event).await
+//                                     {
+//                                         eprintln!("Error processing transaction: {}", e);
+//                                     }
+//                                 });
+//                             }
+//                             Err(e) => println!("Failed to process log: {}", e),
+//                         },
+//                         None => println!("No logs found for this transaction"),
+//                     }
+//                 }
+
+//                 // Save the new block height as the last processed block
+//                 let new_block_height = block.header.height;
+//                 save_last_processed_block(db, new_block_height).await?;
+//                 println!("Saved new block height: {}", new_block_height);
+//             }
+//             Err(err) => match err.handler_error() {
+//                 Some(methods::block::RpcBlockError::UnknownBlock { .. }) => {
+//                     println!("(i) Unknown block!");
+//                     let new_block_height = last_processed_block + 1;
+//                     save_last_processed_block(&db, new_block_height).await?;
+//                     println!("Saved new block height: {}", new_block_height);
+//                 }
+//                 Some(err) => {
+//                     println!("(i) An error occurred `{:#?}`", err);
+//                     panic!("Other error!");
+//                 }
+//                 _ => {
+//                     match err {
+//                         JsonRpcError::ServerError(JsonRpcServerError::ResponseStatusError(
+//                             status,
+//                         )) => {
+//                             println!("(i) Server error occurred: status code {}", status);
+//                             // Puedes agregar un mecanismo de reintento aquí si es necesario.
+//                             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+//                         }
+//                         _ => {
+//                             println!("(i) A non-handler error occurred `{:#?}`", err);
+//                             panic!("Non handled error!");
+//                         }
+//                     }
+//                 }
+//             },
+//         }
+
+//         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+//     }
+// }
+
 pub async fn start_polling(
     client: &JsonRpcClient,
     db: &Arc<Mutex<rocksdb::DB>>,
     processor: Arc<dyn TransactionProcessor>,
+    aggregator: Arc<Aggregator>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let last_processed_block = load_last_processed_block(db).await?;
@@ -175,7 +262,6 @@ pub async fn start_polling(
             Ok(block) => {
                 println!("Processing block: {:#?}", block.header.height);
 
-                // Check if the block contains the transaction of interest
                 if let Some((tx_hash, sender_account_id)) = find_transaction_in_block(
                     &client,
                     &block,
@@ -190,20 +276,31 @@ pub async fn start_polling(
                         panic!("More than one log found. Contract might have changed!");
                     }
 
-                    match logs.first() {
-                        Some(log) => match process_log(log) {
-                            Ok(event) => {
-                                let processor_clone = Arc::clone(&processor);
-                                tokio::spawn(async move {
-                                    if let Err(e) = processor_clone.process_transaction(event).await
-                                    {
-                                        eprintln!("Error processing transaction: {}", e);
-                                    }
-                                });
-                            }
-                            Err(e) => println!("Failed to process log: {}", e),
-                        },
-                        None => println!("No logs found for this transaction"),
+                    if let Some(log) = logs.first() {
+                        if let Ok(event) = process_log(log) {
+                            let processor_clone = Arc::clone(&processor);
+                            let aggregator_clone = Arc::clone(&aggregator);
+                            let event_clone = event.clone();
+
+                            tokio::spawn(async move {
+                                if let Err(e) = processor_clone.process_transaction(event).await {
+                                    eprintln!("Error processing transaction: {}", e);
+                                }
+
+                                // Wait 120 seconds before execute aggregator
+                                tokio::time::sleep(Duration::from_secs(120)).await;
+
+                                if let Err(e) =
+                                    aggregator_clone.process_transaction(event_clone).await
+                                {
+                                    eprintln!("Error in Aggregator processing: {}", e);
+                                }
+                            });
+                        } else {
+                            println!("Failed to process log");
+                        }
+                    } else {
+                        println!("No logs found for this transaction");
                     }
                 }
 

@@ -5,6 +5,7 @@ use crate::qx_builder::QueryBuilder;
 use crate::qx_sender::QuerySender;
 use crate::tx_builder::TxBuilder;
 use crate::tx_sender::TxSender;
+use crate::block_streamer::extract_logs;
 
 use async_trait::async_trait;
 use near_jsonrpc_client::methods;
@@ -120,7 +121,10 @@ impl TransactionProcessor for Miner {
             wait_until: TxExecutionStatus::Final,
         };
 
-        self.tx_sender.send_transaction(request).await?;
+        let tx_response = self.tx_sender.send_transaction(request).await?;
+        let log_tx = extract_logs(&tx_response);
+
+        println!("COMMIT_MINER_LOG: {:?}", log_tx);
 
         println!(
             "Commit by miner successful for request_id: {}",
@@ -155,7 +159,10 @@ impl TransactionProcessor for Miner {
             wait_until: TxExecutionStatus::Final,
         };
 
-        self.tx_sender.send_transaction(request).await?;
+        let tx_response = self.tx_sender.send_transaction(request).await?;
+        let log_tx = extract_logs(&tx_response);
+        println!("REVEAL_MINER_LOG: {:?}", log_tx);
+
 
         Ok(())
     }

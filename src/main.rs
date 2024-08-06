@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tokio::sync::Mutex; // Cambiado de std::sync::Mutex a tokio::sync::Mutex
+use tokio::sync::Mutex; 
 
 use clap::Parser;
 use near_crypto::InMemorySigner;
@@ -26,7 +26,7 @@ use nonce_manager::NonceManager;
 use tx_builder::TxBuilder;
 use tx_sender::TxSender;
 
-use crate::processors::{Miner, TransactionProcessor, Validator};
+use crate::processors::{Aggregator, Miner, TransactionProcessor, Validator};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,18 +56,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tx_builder.clone(),
             tx_sender.clone(),
             db.clone(),
-            cli.account_id,
+            cli.account_id.clone(),
         )),
         Modes::Validator => Arc::new(Validator::new(
             nonce_manager.clone(),
             tx_builder.clone(),
             tx_sender.clone(),
             db.clone(),
-            cli.account_id,
+            cli.account_id.clone(),
         )),
     };
 
-    start_polling(&client, &db, processor).await?;
+    let aggregator = Arc::new(Aggregator::new(
+        nonce_manager.clone(),
+        tx_builder.clone(),
+        tx_sender.clone(),
+        db.clone(),
+        cli.account_id,
+    ));
 
+    //start_polling(&client, &db, processor).await?;
+    start_polling(&client, &db, processor, aggregator).await?;
     Ok(())
 }

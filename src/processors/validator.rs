@@ -5,7 +5,7 @@ use crate::qx_builder::QueryBuilder;
 use crate::qx_sender::QuerySender;
 use crate::tx_builder::TxBuilder;
 use crate::tx_sender::TxSender;
-
+use crate::block_streamer::extract_logs;
 
 use async_trait::async_trait;
 use near_jsonrpc_client::methods;
@@ -13,8 +13,8 @@ use near_primitives::views::TxExecutionStatus;
 use near_sdk::AccountId;
 
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
 use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 
 use super::utils;
 use super::TransactionProcessor;
@@ -88,11 +88,11 @@ impl TransactionProcessor for Validator {
         println!("Validator Commit");
 
         let query = QueryBuilder::new(ACCOUNT_TO_LISTEN.to_string())
-        .with_method_name("get_list_miners_that_commit_and_reveal")
-        .with_args(serde_json::json!({
-            "request_id": event_data.request_id
-        }))
-        .build();
+            .with_method_name("get_list_miners_that_commit_and_reveal")
+            .with_args(serde_json::json!({
+                "request_id": event_data.request_id
+            }))
+            .build();
 
         let query_sender = QuerySender::new(self.tx_sender.client.clone());
         let participant_miners = query_sender.send_query(query).await?;
@@ -135,7 +135,10 @@ impl TransactionProcessor for Validator {
             wait_until: TxExecutionStatus::Final,
         };
 
-        self.tx_sender.send_transaction(request).await?;
+        let tx_response = self.tx_sender.send_transaction(request).await?;
+        let log_tx = extract_logs(&tx_response);
+
+        println!("COMMIT_VALIDATOR_LOG: {:?}", log_tx);
 
         println!(
             "Commit by validator successful for request_id: {}",
@@ -170,7 +173,9 @@ impl TransactionProcessor for Validator {
             wait_until: TxExecutionStatus::Final,
         };
 
-        self.tx_sender.send_transaction(request).await?;
+        let tx_response = self.tx_sender.send_transaction(request).await?;
+        let log_tx = extract_logs(&tx_response);
+        println!("REVEAL_VALIDATOR_LOG: {:?}", log_tx);
 
         Ok(())
     }
