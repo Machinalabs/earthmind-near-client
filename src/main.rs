@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tokio::sync::Mutex; 
+use tokio::sync::Mutex;
 
 use clap::Parser;
 use near_crypto::InMemorySigner;

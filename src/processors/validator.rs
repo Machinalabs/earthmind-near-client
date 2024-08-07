@@ -1,3 +1,4 @@
+use crate::block_streamer::extract_logs;
 use crate::constants::ACCOUNT_TO_LISTEN;
 use crate::models::EventData;
 use crate::nonce_manager::NonceManager;
@@ -5,7 +6,6 @@ use crate::qx_builder::QueryBuilder;
 use crate::qx_sender::QuerySender;
 use crate::tx_builder::TxBuilder;
 use crate::tx_sender::TxSender;
-use crate::block_streamer::extract_logs;
 
 use async_trait::async_trait;
 use near_jsonrpc_client::methods;
@@ -54,7 +54,19 @@ impl TransactionProcessor for Validator {
         println!("Validator Processor");
         println!("Event Data: {:?}", event_data);
 
-        sleep(Duration::from_secs(50)).await;
+        match self
+            .get_stage(self.tx_sender.client.clone(), event_data.clone())
+            .await
+        {
+            Ok(_) => {
+                println!("Successful get stage");
+                //Ok(true)
+            }
+            Err(e) => {
+                println!("Failed to get stage: {}", e);
+                //Err(e)
+            }
+        }
 
         match self.commit(event_data.clone()).await {
             Ok(_) => {
@@ -66,8 +78,6 @@ impl TransactionProcessor for Validator {
                 //Err(e)
             }
         }
-
-        sleep(Duration::from_secs(90)).await;
 
         match self.reveal(event_data.clone()).await {
             Ok(_) => {

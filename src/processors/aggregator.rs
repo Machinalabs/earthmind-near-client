@@ -48,8 +48,19 @@ impl TransactionProcessor for Aggregator {
         println!("Aggregator Processor");
         println!("Event Data: {:?}", event_data);
 
-        //sleep(Duration::from_secs(120)).await;
-
+        match self
+            .get_stage(self.tx_sender.client.clone(), event_data.clone())
+            .await
+        {
+            Ok(_) => {
+                println!("Successful get stage");
+                //Ok(true)
+            }
+            Err(e) => {
+                println!("Failed to get stage: {}", e);
+                //Err(e)
+            }
+        }
         //Transaction to obtain top ten
         let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
 
