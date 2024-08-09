@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  miner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    entrypoint: /bin/sh -c
+    command: ["near_block_listener --mode miner --account-id $MINER_ACCOUNT --private-key $MINER_SECRET_KEY --network testnet"]
+    restart: always
+
+  validator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    entrypoint: /bin/sh -c
+    command: ["near_block_listener --mode validator --account-id $VALIDATOR_ACCOUNT --private-key $VALIDATOR_SECRET_KEY --network testnet"]
+    restart: always
+
+  aggregator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    entrypoint: /bin/sh -c
+    command: ["near_block_listener --mode validator --account-id $AGGREGATOR_ACCOUNT --private-key $AGGREGATOR_SECRET_KEY --network testnet"]
+    restart: always

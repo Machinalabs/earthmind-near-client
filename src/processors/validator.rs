@@ -1,3 +1,4 @@
+use crate::block_streamer::extract_logs;
 use crate::constants::ACCOUNT_TO_LISTEN;
 use crate::models::EventData;
 use crate::nonce_manager::NonceManager;
@@ -5,7 +6,6 @@ use crate::qx_builder::QueryBuilder;
 use crate::qx_sender::QuerySender;
 use crate::tx_builder::TxBuilder;
 use crate::tx_sender::TxSender;
-use crate::block_streamer::extract_logs;
 
 use async_trait::async_trait;
 use near_jsonrpc_client::methods;
@@ -52,33 +52,74 @@ impl TransactionProcessor for Validator {
         event_data: EventData,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         println!("Validator Processor");
-        println!("Event Data: {:?}", event_data);
+        println!("Validator Event Data: {:?}", event_data);
 
-        sleep(Duration::from_secs(50)).await;
+        let commit_attempts = 30;
+        let reveal_attempts = 30;
+        let mut committed = false;
 
-        match self.commit(event_data.clone()).await {
-            Ok(_) => {
-                println!("Commit validator successful");
-                //Ok(true)
-            }
-            Err(e) => {
-                println!("Failed to commit by validator: {}", e);
-                //Err(e)
+        for _attempt in 0..commit_attempts {
+            //Get stage to synchronize
+            let stage_result = self
+                .get_stage(self.tx_sender.client.clone(), event_data.clone())
+                .await?;
+            let stage = stage_result.trim_matches('"').to_string();
+            println!("Current Stage: {:?}", stage);
+
+            if stage == "CommitValidators" {
+                match self.commit(event_data.clone()).await {
+                    Ok(_) => {
+                        committed = true;
+                        break;
+                    }
+                    Err(e) => {
+                        println!("Failed to commit by validator: {}", e);
+                        return Err(e);
+                    }
+                }
+            } else if stage == "RevealValidators" || stage == "Ended" {
+                println!("Commit stage passed without committing, skipping transaction.");
+                return Ok(false);
+            } else {
+                println!("Waiting for CommitValidators stage...");
+                sleep(Duration::from_secs(10)).await;
             }
         }
 
-        sleep(Duration::from_secs(90)).await;
+        if !committed {
+            println!("Failed to reach CommitValidators stage, skipping transaction.");
+            return Ok(false);
+        }
 
-        match self.reveal(event_data.clone()).await {
-            Ok(_) => {
-                println!("Reveal validator successful");
-                Ok(true)
+        for _attempt in 0..reveal_attempts {
+            let stage_result = self
+                .get_stage(self.tx_sender.client.clone(), event_data.clone())
+                .await?;
+            let stage = stage_result.trim_matches('"').to_string();
+            println!("Current Stage: {:?}", stage);
+
+            if stage == "RevealValidators" {
+                match self.reveal(event_data.clone()).await {
+                    Ok(_) => {
+                        return Ok(true);
+                    }
+                    Err(e) => {
+                        println!("Failed to reveal by validator: {}", e);
+                        return Err(e);
+                    }
+                }
+            }else if stage == "Ended" {
+                println!("RevealValidators stage has ended...");
+                return Ok(false);
             }
-            Err(e) => {
-                println!("Failed to reveal by validator: {}", e);
-                Err(e)
+            else {
+                println!("Waiting for RevealValidators stage...");
+                sleep(Duration::from_secs(10)).await;
             }
         }
+
+        println!("Failed to reach appropriate stages after multiple attempts.");
+        Ok(false)
     }
 
     async fn commit(
@@ -114,8 +155,6 @@ impl TransactionProcessor for Validator {
         let query_sender = QuerySender::new(self.tx_sender.client.clone());
         let query_result = query_sender.send_query(query).await?;
 
-        println!("QUERY RESULT: {}", query_result);
-
         let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
 
         let mut tx_builder = self.tx_builder.lock().await;
@@ -140,10 +179,6 @@ impl TransactionProcessor for Validator {
 
         println!("COMMIT_VALIDATOR_LOG: {:?}", log_tx);
 
-        println!(
-            "Commit by validator successful for request_id: {}",
-            event_data.request_id
-        );
         Ok(())
     }
 
