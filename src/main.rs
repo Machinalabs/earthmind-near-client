@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tokio::sync::Mutex; 
+use tokio::sync::Mutex;
 
 use clap::Parser;
 use near_crypto::InMemorySigner;
@@ -65,17 +65,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             db.clone(),
             cli.account_id.clone(),
         )),
+        Modes::Aggregator => Arc::new(Aggregator::new(
+            nonce_manager.clone(),
+            tx_builder.clone(),
+            tx_sender.clone(),
+            db.clone(),
+            cli.account_id,
+        )),
     };
 
-    let aggregator = Arc::new(Aggregator::new(
-        nonce_manager.clone(),
-        tx_builder.clone(),
-        tx_sender.clone(),
-        db.clone(),
-        cli.account_id,
-    ));
-
-    //start_polling(&client, &db, processor).await?;
-    start_polling(&client, &db, processor, aggregator).await?;
+    start_polling(&client, &db, processor).await?;
     Ok(())
 }

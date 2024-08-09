@@ -95,8 +95,6 @@ async fn test_register_miner() -> anyhow::Result<()> {
         .transact()
         .await?;
 
-    //TODO: the conection was success but which value obtain?
-    // status: SuccessValue('true'),
     assert!(is_miner_registered_outcome.is_success());
 
     Ok(())
@@ -147,38 +145,3 @@ async fn test_request_governance_decision() -> anyhow::Result<()> {
     Ok(())
 }
 
-/*
-#[tokio::test]
-async fn test_client_listens_and_responds() {
-    let (worker, contract) = init().await;
-
-    // Crear una cuenta para el cliente
-    let client_account = worker.root_account().create_subaccount("client").initial_balance(10_000_000_000_000_000_000_000_000).transact().await.unwrap().into_result().unwrap();
-
-    // Crear y configurar el cliente
-    let client = Arc::new(Client::new(client_account.id().clone(), client_account.signer().clone(), &worker.rpc_url(), contract.id().clone()));
-
-    // Ejecutar la lógica del cliente en un thread separado
-    let client_clone = client.clone();
-    let client_handle = tokio::spawn(async move {
-        client_clone.listen_and_respond().await;
-    });
-
-    // Simular el evento de governance request
-    contract.call(&worker, "emit_governance_request")
-        .args_json(serde_json::json!({"message": "Governance request"}))
-        .transact()
-        .await
-        .unwrap();
-
-    // Esperar un tiempo para permitir que el cliente procese el evento
-    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-
-    // Verificar los resultados esperados (por ejemplo, un commit exitoso)
-    // Aquí necesitarás una forma de verificar que el commit fue realizado
-    // Esto podría implicar revisar el estado del contrato o los logs
-
-    // Detener el cliente
-    client_handle.abort();
-}
- */

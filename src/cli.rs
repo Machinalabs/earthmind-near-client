@@ -6,7 +6,6 @@ use near_sdk::AccountId;
 #[command(name = "earthmind_client_near")]
 #[command(about = "A Near block listener with different modes", long_about = None)]
 pub struct Cli {
-    // to choose if is a miner o validator
     #[arg(long, value_enum)]
     pub mode: Modes,
 
@@ -24,6 +23,7 @@ pub struct Cli {
 pub enum Modes {
     Miner,
     Validator,
+    Aggregator,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

@@ -10,6 +10,7 @@ use near_primitives::views::TxExecutionStatus;
 use near_sdk::AccountId;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 
 use super::TransactionProcessor;
 
@@ -48,31 +49,37 @@ impl TransactionProcessor for Aggregator {
         println!("Aggregator Processor");
         println!("Event Data: {:?}", event_data);
 
-        //sleep(Duration::from_secs(120)).await;
+        let aggregator_attempts = 30;
 
-        //Transaction to obtain top ten
-        let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
+        for _attempt in 0..aggregator_attempts {
+            // Get stage to synchronize
+            let stage_result = self
+                .get_stage(self.tx_sender.client.clone(), event_data.clone())
+                .await?;
+            let stage = stage_result.trim_matches('"').to_string();
+            println!("Current Stage: {:?}", stage);
 
-        let mut tx_builder = self.tx_builder.lock().await;
+            if stage == "Ended" {
+                match self::obtain_top_ten(self , event_data).await {
+                    Ok(_) => {
+                        return Ok(true);
+                    }
+                    Err(e) => {
+                        println!("Failed to obtain top ten voters: {}", e);
+                        return Err(e);
+                    }
+                }
+            } else {
+                println!("Waiting for Ended stage...");
+                sleep(Duration::from_secs(10)).await;
+            }
+        }
 
-        let (tx, _) = tx_builder
-            .with_method_name("get_top_10_voters")
-            .with_args(serde_json::json!({
-                "request_id": event_data.request_id,
-            }))
-            .build(nonce, block_hash);
-
-        let signer = &tx_builder.signer;
-
-        let request = methods::send_tx::RpcSendTransactionRequest {
-            signed_transaction: tx.sign(signer),
-            wait_until: TxExecutionStatus::Final,
-        };
-
-        let tx_response = self.tx_sender.send_transaction(request).await?;
-        let log_tx = extract_logs(&tx_response);
-        println!("TOP_TEN: {:?}", log_tx);
-        Ok(true)
+        println!(
+            "Failed to reach Ended stage after {} attempts",
+            aggregator_attempts
+        );
+        Ok(false)
     }
 
     async fn commit(
@@ -88,4 +95,34 @@ impl TransactionProcessor for Aggregator {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Ok(())
     }
+
+}
+pub async fn obtain_top_ten( aggregator : &Aggregator,
+    event_data: EventData,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    println!("Obtaining top ten voters");
+
+    let (nonce, block_hash) = aggregator.nonce_manager.get_nonce_and_tx_hash().await?;
+
+    let mut tx_builder = aggregator.tx_builder.lock().await;
+
+    let (tx, _) = tx_builder
+        .with_method_name("get_top_10_voters")
+        .with_args(serde_json::json!({
+            "request_id": event_data.request_id,
+        }))
+        .build(nonce, block_hash);
+
+    let signer = &tx_builder.signer;
+
+    let request = methods::send_tx::RpcSendTransactionRequest {
+        signed_transaction: tx.sign(signer),
+        wait_until: TxExecutionStatus::Final,
+    };
+
+    let tx_response = aggregator.tx_sender.send_transaction(request).await?;
+    let log_tx = extract_logs(&tx_response);
+    println!("TOP_TEN LOG: {:?}", log_tx);
+
+    Ok(())
 }
