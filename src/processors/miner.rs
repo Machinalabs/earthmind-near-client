@@ -51,73 +51,85 @@ impl TransactionProcessor for Miner {
         event_data: EventData,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         println!("Miner Processor");
-        println!("Event Data: {:?}", event_data);
-    
-        // Obtener el estado inicial
-        let mut stage_result = self
-            .get_stage(self.tx_sender.client.clone(), event_data.clone())
-            .await?;
-        let mut stage = stage_result.trim_matches('"').to_string();
-        println!("Initial Stage: {:?}", stage);
-    
-        if stage == "CommitMiners" {
-            // Ejecutar commit
-            match self.commit(event_data.clone()).await {
-                Ok(_) => {
-                    println!("Commit miner successful");
-    
-                    // Intentar revelar en un bucle
-                    let reveal_attempts = 5; // Número de intentos de revelación
-                    for attempt in 0..reveal_attempts {
-                        println!("Reveal attempt: {}", attempt + 1);
-    
-                        // Esperar 5 segundos antes de intentar revelar
-                        sleep(Duration::from_secs(5)).await;
-    
-                        // Volver a verificar el estado
-                        stage_result = self
-                            .get_stage(self.tx_sender.client.clone(), event_data.clone())
-                            .await?;
-                        stage = stage_result.trim_matches('"').to_string();
-                        println!("Stage after commit: {}", stage);
-    
-                        if stage == "RevealMiners" {
-                            // Ejecutar reveal si estamos en el estado correcto
-                            match self.reveal(event_data.clone()).await {
-                                Ok(_) => {
-                                    println!("Reveal miner successful");
-                                    return Ok(true);
-                                }
-                                Err(e) => {
-                                    println!("Failed to reveal by miner: {}", e);
-                                    // Puedes agregar lógica para manejar el error si es necesario
-                                }
-                            }
-                        } else {
-                            println!("Stage is not RevealMiners, skipping reveal.");
-                            // Si el estado no es "RevealMiners", continuar intentando
-                        }
+        println!("Miner Event Data: {:?}", event_data);
+
+        let commit_attempts = 30;
+        let reveal_attempts = 30;
+        let mut committed = false;
+
+        // Wait for CommitMiners stage
+        for _attempt in 0..commit_attempts {
+            let stage_result = self
+                .get_stage(self.tx_sender.client.clone(), event_data.clone())
+                .await?;
+            let stage = stage_result.trim_matches('"').to_string();
+            println!("Current Stage: {:?}", stage);
+
+            if stage == "CommitMiners" {
+                match self.commit(event_data.clone()).await {
+                    Ok(_) => {
+                        println!("Commit by miner successful");
+                        committed = true;
+                        break;
                     }
-                    // Si después de 5 intentos no se ha conseguido revelar
-                    println!("Failed to reach RevealMiners stage after 5 attempts.");
-                    return Ok(false);
+                    Err(e) => {
+                        println!("Failed to commit by miner: {}", e);
+                        return Err(e);
+                    }
                 }
-                Err(e) => {
-                    println!("Failed to commit by miner: {}", e);
-                    return Err(e);
-                }
+            } else if stage == "RevealMiners" || stage == "Ended" {
+                println!("Commit stage passed without committing, skipping transaction.");
+                return Ok(false);
+            } else {
+                println!("Waiting for CommitMiners stage...");
+                sleep(Duration::from_secs(10)).await;
             }
-        } else {
-            println!("Stage is not CommitMiners, skipping transaction.");
+        }
+
+        if !committed {
+            println!("Failed to reach CommitMiners stage, skipping transaction.");
             return Ok(false);
         }
+
+        // Wait for RevealMiners stage
+        for attempt in 0..reveal_attempts {
+            let stage_result = self
+                .get_stage(self.tx_sender.client.clone(), event_data.clone())
+                .await?;
+            let stage = stage_result.trim_matches('"').to_string();
+            println!("Current Stage: {:?}", stage);
+
+            if stage == "RevealMiners" {
+                match self.reveal(event_data.clone()).await {
+                    Ok(_) => {
+                        println!("Reveal by miner successful");
+                        return Ok(true);
+                    }
+                    Err(e) => {
+                        println!("Failed to reveal by miner: {}", e);
+                        return Err(e);
+                    }
+                }
+            } else if stage == "Ended" {
+                println!("Request has ended before revealing");
+                return Ok(false);
+            } else {
+                println!("Waiting for RevealMiners stage...");
+                sleep(Duration::from_secs(10)).await;
+            }
+        }
+
+        println!("Failed to reach appropriate stages after multiple attempts.");
+        Ok(false)
     }
-        async fn commit(
+
+    async fn commit(
         &self,
         event_data: EventData,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Miner Commit");
 
+        // Query to obtain hash answer to commit
         let query = QueryBuilder::new(ACCOUNT_TO_LISTEN.to_string())
             .with_method_name("hash_miner_answer")
             .with_args(serde_json::json!({
@@ -130,9 +142,9 @@ impl TransactionProcessor for Miner {
 
         let query_sender = QuerySender::new(self.tx_sender.client.clone());
         let query_result = query_sender.send_query(query).await?;
+        let answer_hash = query_result.trim_matches('"');
 
-        println!("QUERY RESULT: {}", query_result);
-
+        // Transaction to send the commit
         let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
 
         let mut tx_builder = self.tx_builder.lock().await;
@@ -141,7 +153,7 @@ impl TransactionProcessor for Miner {
             .with_method_name("commit_by_miner")
             .with_args(serde_json::json!({
                 "request_id": event_data.request_id,
-                "answer": query_result,
+                "answer": answer_hash,
             }))
             .build(nonce, block_hash);
 
@@ -157,10 +169,6 @@ impl TransactionProcessor for Miner {
 
         println!("COMMIT_MINER_LOG: {:?}", log_tx);
 
-        println!(
-            "Commit by miner successful for request_id: {}",
-            event_data.request_id
-        );
         Ok(())
     }
 
@@ -170,6 +178,7 @@ impl TransactionProcessor for Miner {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Reveal by miner");
 
+        // Transaction to send the values to reveal
         let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
 
         let mut tx_builder = self.tx_builder.lock().await;
@@ -194,6 +203,13 @@ impl TransactionProcessor for Miner {
         let log_tx = extract_logs(&tx_response);
         println!("REVEAL_MINER_LOG: {:?}", log_tx);
 
+        Ok(())
+    }
+
+    async fn obtain_top_ten(
+        &self,
+        _event_data: EventData,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Ok(())
     }
 }

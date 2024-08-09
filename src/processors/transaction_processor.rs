@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::constants::ACCOUNT_TO_LISTEN;
 use crate::models::EventData;
 use crate::qx_builder::QueryBuilder;
@@ -7,6 +5,7 @@ use crate::qx_sender::QuerySender;
 use near_jsonrpc_client::JsonRpcClient;
 
 use async_trait::async_trait;
+use std::sync::Arc;
 
 #[async_trait]
 pub trait TransactionProcessor: Send + Sync {
@@ -21,6 +20,11 @@ pub trait TransactionProcessor: Send + Sync {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
     async fn reveal(
+        &self,
+        event_data: EventData,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    async fn obtain_top_ten(
         &self,
         event_data: EventData,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;

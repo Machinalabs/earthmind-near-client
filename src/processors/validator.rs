@@ -52,43 +52,84 @@ impl TransactionProcessor for Validator {
         event_data: EventData,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         println!("Validator Processor");
-        println!("Event Data: {:?}", event_data);
+        println!("Validator Event Data: {:?}", event_data);
 
-        match self
-            .get_stage(self.tx_sender.client.clone(), event_data.clone())
-            .await
-        {
-            Ok(_) => {
-                println!("Successful get stage");
-                //Ok(true)
-            }
-            Err(e) => {
-                println!("Failed to get stage: {}", e);
-                //Err(e)
+        let commit_attempts = 30;
+        let reveal_attempts = 30;
+        let mut committed = false;
+
+        for _attempt in 0..commit_attempts {
+            //Get stage to synchronize
+            let stage_result = self
+                .get_stage(self.tx_sender.client.clone(), event_data.clone())
+                .await?;
+            let stage = stage_result.trim_matches('"').to_string();
+            println!("Current Stage: {:?}", stage);
+
+            if stage == "CommitValidators" {
+                match self.commit(event_data.clone()).await {
+                    Ok(_) => {
+                        committed = true;
+                        break;
+                    }
+                    Err(e) => {
+                        println!("Failed to commit by validator: {}", e);
+                        return Err(e);
+                    }
+                }
+            } else if stage == "RevealValidators" || stage == "Ended" {
+                println!("Commit stage passed without committing, skipping transaction.");
+                return Ok(false);
+            } else {
+                println!("Waiting for CommitValidators stage...");
+                sleep(Duration::from_secs(10)).await;
             }
         }
 
-        match self.commit(event_data.clone()).await {
-            Ok(_) => {
-                println!("Commit validator successful");
-                //Ok(true)
+        if !committed {
+            println!("Failed to reach CommitValidators stage, skipping transaction.");
+            return Ok(false);
+        }
+
+        for _attempt in 0..reveal_attempts {
+            let stage_result = self
+                .get_stage(self.tx_sender.client.clone(), event_data.clone())
+                .await?;
+            let stage = stage_result.trim_matches('"').to_string();
+            println!("Current Stage: {:?}", stage);
+
+            if stage == "RevealValidators" {
+                match self.reveal(event_data.clone()).await {
+                    Ok(_) => {
+                        return Ok(true);
+                    }
+                    Err(e) => {
+                        println!("Failed to reveal by validator: {}", e);
+                        return Err(e);
+                    }
+                }
             }
-            Err(e) => {
-                println!("Failed to commit by validator: {}", e);
-                //Err(e)
+            /*else if stage == "Ended" {
+                println!("Request has ended, calling obtain_top_ten");
+                match self.obtain_top_ten(event_data.clone()).await {
+                    Ok(_) => {
+                        println!("Obtain top ten successful");
+                        return Ok(true);
+                    }
+                    Err(e) => {
+                        println!("Failed to obtain top ten: {}", e);
+                        return Err(e);
+                    }
+                }
+            }*/
+            else {
+                println!("Waiting for RevealValidators stage...");
+                sleep(Duration::from_secs(10)).await;
             }
         }
 
-        match self.reveal(event_data.clone()).await {
-            Ok(_) => {
-                println!("Reveal validator successful");
-                Ok(true)
-            }
-            Err(e) => {
-                println!("Failed to reveal by validator: {}", e);
-                Err(e)
-            }
-        }
+        println!("Failed to reach appropriate stages after multiple attempts.");
+        Ok(false)
     }
 
     async fn commit(
@@ -124,8 +165,6 @@ impl TransactionProcessor for Validator {
         let query_sender = QuerySender::new(self.tx_sender.client.clone());
         let query_result = query_sender.send_query(query).await?;
 
-        println!("QUERY RESULT: {}", query_result);
-
         let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
 
         let mut tx_builder = self.tx_builder.lock().await;
@@ -150,10 +189,6 @@ impl TransactionProcessor for Validator {
 
         println!("COMMIT_VALIDATOR_LOG: {:?}", log_tx);
 
-        println!(
-            "Commit by validator successful for request_id: {}",
-            event_data.request_id
-        );
         Ok(())
     }
 
@@ -187,6 +222,13 @@ impl TransactionProcessor for Validator {
         let log_tx = extract_logs(&tx_response);
         println!("REVEAL_VALIDATOR_LOG: {:?}", log_tx);
 
+        Ok(())
+    }
+
+    async fn obtain_top_ten(
+        &self,
+        event_data: EventData,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Ok(())
     }
 }
