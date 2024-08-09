@@ -110,7 +110,7 @@ impl TransactionProcessor for Validator {
                 }
             }else if stage == "Ended" {
                 println!("RevealValidators stage has ended...");
-                
+                return Ok(false);
             }
             else {
                 println!("Waiting for RevealValidators stage...");

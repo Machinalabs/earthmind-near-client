@@ -9,8 +9,6 @@ services:
       - .env
     entrypoint: /bin/sh -c
     command: ["near_block_listener --mode miner --account-id $MINER_ACCOUNT --private-key $MINER_SECRET_KEY --network testnet"]
-    volumes:
-      - ./data/miner:/usr/src/near_block_listener/data
     restart: always
 
   validator:
@@ -21,8 +19,6 @@ services:
       - .env
     entrypoint: /bin/sh -c
     command: ["near_block_listener --mode validator --account-id $VALIDATOR_ACCOUNT --private-key $VALIDATOR_SECRET_KEY --network testnet"]
-    volumes:
-      - ./data/validator:/usr/src/near_block_listener/data
     restart: always
 
   aggregator:
@@ -33,6 +29,4 @@ services:
       - .env
     entrypoint: /bin/sh -c
     command: ["near_block_listener --mode validator --account-id $AGGREGATOR_ACCOUNT --private-key $AGGREGATOR_SECRET_KEY --network testnet"]
-    volumes:
-      - ./data/aggregator:/usr/src/near_block_listener/data
     restart: always

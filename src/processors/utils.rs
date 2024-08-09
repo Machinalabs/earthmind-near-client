@@ -2,7 +2,7 @@ use near_sdk::AccountId;
 
 pub fn generate_validator_answer() -> Vec<AccountId> {
     let value = vec![
-        "miner1.near".parse().unwrap(),
+        "hasserualcala.testnet".parse().unwrap(),
         "miner2.near".parse().unwrap(),
         "miner3.near".parse().unwrap(),
         "miner4.near".parse().unwrap(),
