@@ -60,7 +60,7 @@ impl TransactionProcessor for Aggregator {
             println!("Current Stage: {:?}", stage);
 
             if stage == "Ended" {
-                match self.obtain_top_ten(event_data.clone()).await {
+                match self::obtain_top_ten(self , event_data).await {
                     Ok(_) => {
                         return Ok(true);
                     }
@@ -96,34 +96,33 @@ impl TransactionProcessor for Aggregator {
         Ok(())
     }
 
-    async fn obtain_top_ten(
-        &self,
-        event_data: EventData,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        println!("Obtaining top ten voters");
+}
+pub async fn obtain_top_ten( aggregator : &Aggregator,
+    event_data: EventData,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    println!("Obtaining top ten voters");
 
-        let (nonce, block_hash) = self.nonce_manager.get_nonce_and_tx_hash().await?;
+    let (nonce, block_hash) = aggregator.nonce_manager.get_nonce_and_tx_hash().await?;
 
-        let mut tx_builder = self.tx_builder.lock().await;
+    let mut tx_builder = aggregator.tx_builder.lock().await;
 
-        let (tx, _) = tx_builder
-            .with_method_name("get_top_10_voters")
-            .with_args(serde_json::json!({
-                "request_id": event_data.request_id,
-            }))
-            .build(nonce, block_hash);
+    let (tx, _) = tx_builder
+        .with_method_name("get_top_10_voters")
+        .with_args(serde_json::json!({
+            "request_id": event_data.request_id,
+        }))
+        .build(nonce, block_hash);
 
-        let signer = &tx_builder.signer;
+    let signer = &tx_builder.signer;
 
-        let request = methods::send_tx::RpcSendTransactionRequest {
-            signed_transaction: tx.sign(signer),
-            wait_until: TxExecutionStatus::Final,
-        };
+    let request = methods::send_tx::RpcSendTransactionRequest {
+        signed_transaction: tx.sign(signer),
+        wait_until: TxExecutionStatus::Final,
+    };
 
-        let tx_response = self.tx_sender.send_transaction(request).await?;
-        let log_tx = extract_logs(&tx_response);
-        println!("TOP_TEN LOG: {:?}", log_tx);
+    let tx_response = aggregator.tx_sender.send_transaction(request).await?;
+    let log_tx = extract_logs(&tx_response);
+    println!("TOP_TEN LOG: {:?}", log_tx);
 
-        Ok(())
-    }
+    Ok(())
 }

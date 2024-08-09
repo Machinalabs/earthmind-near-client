@@ -68,7 +68,6 @@ impl TransactionProcessor for Miner {
             if stage == "CommitMiners" {
                 match self.commit(event_data.clone()).await {
                     Ok(_) => {
-                        println!("Commit by miner successful");
                         committed = true;
                         break;
                     }
@@ -77,7 +76,7 @@ impl TransactionProcessor for Miner {
                         return Err(e);
                     }
                 }
-            } else if stage == "RevealMiners" || stage == "Ended" {
+            } else if stage == "RevealMiners" || stage == "CommitValidators" || stage == "RevealValidators" || stage == "Ended" {
                 println!("Commit stage passed without committing, skipping transaction.");
                 return Ok(false);
             } else {
@@ -92,7 +91,7 @@ impl TransactionProcessor for Miner {
         }
 
         // Wait for RevealMiners stage
-        for attempt in 0..reveal_attempts {
+        for _attempt in 0..reveal_attempts {
             let stage_result = self
                 .get_stage(self.tx_sender.client.clone(), event_data.clone())
                 .await?;
@@ -102,7 +101,6 @@ impl TransactionProcessor for Miner {
             if stage == "RevealMiners" {
                 match self.reveal(event_data.clone()).await {
                     Ok(_) => {
-                        println!("Reveal by miner successful");
                         return Ok(true);
                     }
                     Err(e) => {
@@ -110,8 +108,8 @@ impl TransactionProcessor for Miner {
                         return Err(e);
                     }
                 }
-            } else if stage == "Ended" {
-                println!("Request has ended before revealing");
+            } else if stage == "CommitValidators" || stage == "RevealValidators" || stage == "Ended" {
+                println!("RevealMiner stage has ended");
                 return Ok(false);
             } else {
                 println!("Waiting for RevealMiners stage...");
@@ -206,10 +204,4 @@ impl TransactionProcessor for Miner {
         Ok(())
     }
 
-    async fn obtain_top_ten(
-        &self,
-        _event_data: EventData,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        Ok(())
-    }
 }

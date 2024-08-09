@@ -108,20 +108,10 @@ impl TransactionProcessor for Validator {
                         return Err(e);
                     }
                 }
+            }else if stage == "Ended" {
+                println!("RevealValidators stage has ended...");
+                
             }
-            /*else if stage == "Ended" {
-                println!("Request has ended, calling obtain_top_ten");
-                match self.obtain_top_ten(event_data.clone()).await {
-                    Ok(_) => {
-                        println!("Obtain top ten successful");
-                        return Ok(true);
-                    }
-                    Err(e) => {
-                        println!("Failed to obtain top ten: {}", e);
-                        return Err(e);
-                    }
-                }
-            }*/
             else {
                 println!("Waiting for RevealValidators stage...");
                 sleep(Duration::from_secs(10)).await;
@@ -222,13 +212,6 @@ impl TransactionProcessor for Validator {
         let log_tx = extract_logs(&tx_response);
         println!("REVEAL_VALIDATOR_LOG: {:?}", log_tx);
 
-        Ok(())
-    }
-
-    async fn obtain_top_ten(
-        &self,
-        event_data: EventData,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Ok(())
     }
 }

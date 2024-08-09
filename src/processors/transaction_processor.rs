@@ -24,11 +24,6 @@ pub trait TransactionProcessor: Send + Sync {
         event_data: EventData,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
-    async fn obtain_top_ten(
-        &self,
-        event_data: EventData,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
-
     // Default method to all the implementations to synchronize
     async fn get_stage(
         &self,
